@@ -29,7 +29,7 @@ const SEVERITY_ORDER = {
  *
  * @param {string} projectPath - Path to the target project directory.
  * @param {Object} [options={}] - Inspection configuration options.
- * @param {string} [options.configPath] - Explicit path to ranger.config.json.
+ * @param {string} [options.configPath] - Explicit path to devora.config.json or ranger.config.json.
  * @param {Object} [options.config] - Pre-loaded or inline configuration object.
  * @param {string[]} [options.categories] - Array of categories to run (default: all).
  * @param {string[]} [options.excludeCategories] - Array of categories to skip.
@@ -57,7 +57,7 @@ async function inspectProject(projectPath, options = {}) {
     throw new Error(`Project path is not a directory: "${resolvedPath}"`);
   }
 
-  // Load project configuration (explicit path, auto-discovered ranger.config.json, or default)
+  // Load project configuration (explicit path, auto-discovered devora.config.json / ranger.config.json, or default)
   let config;
   let loadedConfigPath = null;
   if (options.config) {

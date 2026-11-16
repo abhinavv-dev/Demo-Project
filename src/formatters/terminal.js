@@ -18,7 +18,7 @@ function formatTerminal(inspectionResult, version, enableColor = true) {
 
   // Header
   lines.push('');
-  lines.push(`${c.bold(c.cyan('RANGER'))} ${c.dim(`v${version}`)} ${c.dim('—')} ${c.bold('Project Health Inspector')}`);
+  lines.push(`${c.bold(c.cyan('DEVORA'))} ${c.dim(`v${version}`)} ${c.dim('—')} ${c.bold('Project Health Inspector')}`);
   lines.push(c.dim('────────────────────────────────────────────────────────────'));
   lines.push(`${c.dim('Project:')}      ${c.bold(project.name)}`);
   lines.push(`${c.dim('Target:')}       ${project.path}`);
@@ -139,7 +139,7 @@ function formatScoreOnly(inspectionResult, version, enableColor = true) {
 
   const lines = [
     '',
-    `${c.bold(c.cyan('RANGER'))} ${c.dim(`v${version}`)} ${c.dim('—')} ${c.bold(project.name)}`,
+    `${c.bold(c.cyan('DEVORA'))} ${c.dim(`v${version}`)} ${c.dim('—')} ${c.bold(project.name)}`,
     `${c.dim('Health Score:')} ${gradeColor(c.bold(`${score.value}/100`))} ${c.dim('(')}${gradeColor(c.bold(`Grade ${score.grade}`))}${c.dim(')')}`,
     `${c.dim('Breakdown:')}    ${summary.errors} errors, ${summary.warnings} warnings, ${summary.info} notices ${c.dim(`(${duration}ms)`)}`,
     ''
@@ -159,7 +159,7 @@ function formatRulesList(rules, enableColor = true) {
   const c = createColors(enableColor);
   const lines = [
     '',
-    `${c.bold(c.cyan('RANGER'))} ${c.dim('— Available Diagnostic Rules')}`,
+    `${c.bold(c.cyan('DEVORA'))} ${c.dim('— Available Diagnostic Rules')}`,
     c.dim('──────────────────────────────────────────────────────────────────────────'),
     `${c.bold('ID'.padEnd(10))} ${c.bold('CATEGORY'.padEnd(16))} ${c.bold('DEFAULT'.padEnd(10))} ${c.bold('TITLE')}`,
     c.dim('──────────────────────────────────────────────────────────────────────────')

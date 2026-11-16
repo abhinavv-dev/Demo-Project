@@ -108,7 +108,7 @@ function validateConfig(config) {
           throw new Error('Each item in "rules.disabled" must be a non-empty string rule ID.');
         }
         if (!isKnownRule(ruleId)) {
-          throw new Error(`Unknown rule ID in "rules.disabled": "${ruleId}". Run "ranger --list-rules" to see available rules.`);
+          throw new Error(`Unknown rule ID in "rules.disabled": "${ruleId}". Run "devora --list-rules" to see available rules.`);
         }
       }
       normalized.rules.disabled = [...config.rules.disabled];
@@ -120,7 +120,7 @@ function validateConfig(config) {
       }
       for (const [ruleId, sev] of Object.entries(config.rules.severity)) {
         if (!isKnownRule(ruleId)) {
-          throw new Error(`Unknown rule ID in "rules.severity": "${ruleId}". Run "ranger --list-rules" to see available rules.`);
+          throw new Error(`Unknown rule ID in "rules.severity": "${ruleId}". Run "devora --list-rules" to see available rules.`);
         }
         if (!ALLOWED_SEVERITIES.has(sev)) {
           throw new Error(`Invalid severity value "${sev}" for rule "${ruleId}". Allowed severities: "error", "warning", "info".`);
@@ -226,14 +226,28 @@ async function loadConfig(projectRoot, explicitConfigPath = null) {
       throw new Error(`Specified configuration path is not a file: "${targetPath}"`);
     }
   } else {
-    const defaultPath = path.join(projectRoot, 'ranger.config.json');
+    // Check devora.config.json first, then fall back to ranger.config.json for backwards compatibility
+    const primaryPath = path.join(projectRoot, 'devora.config.json');
+    const legacyPath = path.join(projectRoot, 'ranger.config.json');
+
     try {
-      const stat = await fsp.stat(defaultPath);
+      const stat = await fsp.stat(primaryPath);
       if (stat.isFile()) {
-        targetPath = defaultPath;
+        targetPath = primaryPath;
       }
     } catch {
       targetPath = null;
+    }
+
+    if (!targetPath) {
+      try {
+        const stat = await fsp.stat(legacyPath);
+        if (stat.isFile()) {
+          targetPath = legacyPath;
+        }
+      } catch {
+        targetPath = null;
+      }
     }
   }
 

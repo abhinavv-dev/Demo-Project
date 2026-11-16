@@ -1,6 +1,6 @@
 # Contributing to Devora
 
-Thank you for your interest in contributing to Devora! Devora (CLI binary: `ranger`) is an open-source, zero-dependency Node.js project diagnostics and code health inspection tool.
+Thank you for your interest in contributing to Devora! Devora is an open-source, zero-dependency Node.js project diagnostics and code health inspection tool.
 
 ---
 
@@ -9,7 +9,7 @@ Thank you for your interest in contributing to Devora! Devora (CLI binary: `rang
 - **Node.js**: Node.js `>=18.0.0` (active LTS versions 18, 20, or 22 recommended).
 - **Git**: Git `>=2.20`.
 - **Operating Systems**: macOS, Linux (Ubuntu/Debian), or Windows.
-- **Dependencies Philosophy**: **Zero external runtime dependencies**. Ranger exclusively utilizes Node.js standard library built-ins (`node:fs`, `node:path`, `node:child_process`, `node:module`). External packages must not be added to `dependencies`.
+- **Dependencies Philosophy**: **Zero external runtime dependencies**. Devora exclusively utilizes Node.js standard library built-ins (`node:fs`, `node:path`, `node:child_process`, `node:module`). External packages must not be added to `dependencies`.
 
 ---
 
@@ -56,7 +56,7 @@ ranger/
 │   ├── utils/
 │   │   └── fs.js                  # Safe file traversal, pattern matching, dynamic import analysis
 │   ├── cli.js                     # CLI executable entry point
-│   ├── config.js                  # ranger.config.json discovery and validation
+│   ├── config.js                  # devora.config.json discovery and validation
 │   ├── engine.js                  # Inspection orchestration engine
 │   ├── index.js                   # Public programmatic API exports
 │   ├── registry.js                # Rule registry and metadata lookup

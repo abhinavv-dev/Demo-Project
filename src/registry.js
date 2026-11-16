@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Standard registry of diagnostic rules supported by Ranger.
+ * Standard registry of diagnostic rules supported by Devora.
  */
 const KNOWN_RULES = [
   // Configuration
@@ -159,7 +159,7 @@ function getRule(id) {
 }
 
 /**
- * Check if a rule ID is recognized by Ranger.
+ * Check if a rule ID is recognized by Devora.
  *
  * @param {string} id
  * @returns {boolean}

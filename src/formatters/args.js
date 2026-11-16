@@ -5,7 +5,7 @@ const path = require('node:path');
 const VALID_FAIL_ON_SEVERITIES = new Set(['error', 'warning', 'info']);
 
 /**
- * Parse command-line arguments for the Ranger CLI.
+ * Parse command-line arguments for the Devora CLI.
  *
  * @param {string[]} argv - Array of command-line argument strings.
  * @returns {{
@@ -113,18 +113,18 @@ function parseArgs(argv = []) {
  * @returns {string}
  */
 function getHelpText(version) {
-  return `Ranger v${version}
+  return `Devora v${version}
 A lightweight health inspector for JavaScript and Node.js projects.
 
 USAGE:
-  ranger [path] [options]
-  npx ranger [path] [options]
+  devora [path] [options]
+  npx devora [path] [options]
 
 ARGUMENTS:
   [path]                 Target project directory (defaults to current directory)
 
 OPTIONS:
-  --config <path>        Explicit path to ranger.config.json
+  --config <path>        Explicit path to devora.config.json
   --fail-on <severity>   Set failure threshold for CI exit code: error, warning, info
   --json                 Output findings and score as machine-readable JSON
   --score                Display health score and summary in a concise format
@@ -139,16 +139,16 @@ EXIT CODES:
   2   Invalid arguments, configuration errors, or execution failures
 
 EXAMPLES:
-  ranger
-  ranger .
-  ranger /path/to/project
-  ranger --fail-on warning
-  ranger --fail-on error --json
-  ranger --score
-  ranger --list-rules
-  ranger --config ranger.config.json
-  ranger --json
-  ranger --no-color
+  devora
+  devora .
+  devora /path/to/project
+  devora --fail-on warning
+  devora --fail-on error --json
+  devora --score
+  devora --list-rules
+  devora --config devora.config.json
+  devora --json
+  devora --no-color
 `;
 }
 

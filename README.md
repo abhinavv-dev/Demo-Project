@@ -2,7 +2,7 @@
 
 A lightweight health inspector for JavaScript and Node.js projects.
 
-Devora (CLI binary: `ranger`) scans your project to identify configuration problems, dependency issues, environment inconsistencies, security risks, and code hygiene gaps before they reach production. Every completed inspection produces a deterministic **Health Score (0–100)**, a corresponding **Letter Grade (A–F)**, and actionable diagnostic findings.
+Devora scans your project to identify configuration problems, dependency issues, environment inconsistencies, security risks, and code hygiene gaps before they reach production. Every completed inspection produces a deterministic **Health Score (0–100)**, a corresponding **Letter Grade (A–F)**, and actionable diagnostic findings.
 
 Devora requires **zero external dependencies**, runs natively on **Node.js >=18**, and is designed for individual developers, team code reviews, CI/CD automation, and GitHub Actions workflows.
 
@@ -27,7 +27,7 @@ Devora requires **zero external dependencies**, runs natively on **Node.js >=18*
   - [Penalty Weights](#penalty-weights)
   - [Letter Grade Thresholds](#letter-grade-thresholds)
 - [Diagnostic Rule Categories](#diagnostic-rule-categories)
-- [Project Configuration (`ranger.config.json`)](#project-configuration-rangerconfigjson)
+- [Project Configuration (`devora.config.json`)](#project-configuration-devoraconfigjson)
   - [Configuration Example](#configuration-example)
   - [Configuration Schema & Properties](#configuration-schema--properties)
 - [Programmatic API](#programmatic-api)
@@ -59,7 +59,7 @@ Devora provides an instant, zero-setup sanity check that diagnoses these issues 
 ## Key Features
 
 - **Project Health Scoring**: Deterministic 0–100 health score with letter grades (A through F) reflecting project health.
-- **Configurable Rules & Thresholds**: Customize penalty deductions, severity levels, rule exclusions, and grade thresholds in `ranger.config.json`.
+- **Configurable Rules & Thresholds**: Customize penalty deductions, severity levels, rule exclusions, and grade thresholds in `devora.config.json` (also supports backwards-compatible `ranger.config.json`).
 - **CI/CD Ready**: Configurable failure thresholds via `--fail-on <severity>` and standardized exit codes (0, 1, 2).
 - **Monorepo & Workspaces Support**: Automatically resolves hoisted dependencies and root lockfiles for npm, yarn, and pnpm workspaces.
 - **Filesystem & Symlink Resilience**: Built-in protection against circular symlinks, permission errors, and symlink traversal escapes.
@@ -79,13 +79,11 @@ No installation required:
 npx devora
 ```
 
-*(Note: `npx ranger` can also be run if installed or executed locally).*
-
 ### Global Installation
 
 ```bash
 npm install -g devora
-ranger
+devora
 ```
 
 ### Local Development Dependency
@@ -99,8 +97,8 @@ Add to your `package.json` scripts:
 ```json
 {
   "scripts": {
-    "doctor": "ranger",
-    "check:health": "ranger --fail-on warning"
+    "doctor": "devora",
+    "check:health": "devora --fail-on warning"
   }
 }
 ```
@@ -112,25 +110,25 @@ Add to your `package.json` scripts:
 Inspect the current working directory:
 
 ```bash
-npx ranger
+npx devora
 ```
 
 Inspect a specific directory:
 
 ```bash
-npx ranger ./my-project
+npx devora ./my-project
 ```
 
 Run in strict CI mode (fails if any warnings or errors exist):
 
 ```bash
-npx ranger --fail-on warning
+npx devora --fail-on warning
 ```
 
 Output machine-readable JSON for scripting or pipeline aggregation:
 
 ```bash
-npx ranger --json
+npx devora --json
 ```
 
 ---
@@ -139,14 +137,14 @@ npx ranger --json
 
 ```text
 USAGE:
-  ranger [path] [options]
-  npx ranger [path] [options]
+  devora [path] [options]
+  npx devora [path] [options]
 
 ARGUMENTS:
   [path]                 Target project directory (defaults to current directory)
 
 OPTIONS:
-  --config <path>        Explicit path to ranger.config.json
+  --config <path>        Explicit path to devora.config.json
   --fail-on <severity>   Set failure threshold for CI exit code: error, warning, info
   --json                 Output findings and score as machine-readable JSON
   --score                Display health score and summary in a concise format
@@ -158,7 +156,7 @@ OPTIONS:
 
 ### Exit Code Contract
 
-Ranger follows standard UNIX and CI/CD process exit codes:
+Devora follows standard UNIX and CI/CD process exit codes:
 
 | Exit Code | Meaning | Condition |
 | :---: | :--- | :--- |
@@ -178,11 +176,11 @@ Ranger follows standard UNIX and CI/CD process exit codes:
 Provides a minimal one-line status summary:
 
 ```bash
-npx ranger --score
+npx devora --score
 ```
 
 ```text
-RANGER v0.3.0 — my-node-app
+DEVORA v0.3.0 — my-node-app
 Health Score: 93/100 (Grade A)
 Breakdown:    0 errors, 1 warning, 0 notices (45ms)
 ```
@@ -192,7 +190,7 @@ Breakdown:    0 errors, 1 warning, 0 notices (45ms)
 Emits structured, unadorned JSON directly to `stdout`. Diagnostic banners and ANSI escapes are omitted automatically:
 
 ```bash
-npx ranger --json
+npx devora --json
 ```
 
 ```json
@@ -201,7 +199,7 @@ npx ranger --json
     "name": "my-node-app",
     "path": "/Users/developer/my-node-app"
   },
-  "configPath": "/Users/developer/my-node-app/ranger.config.json",
+  "configPath": "/Users/developer/my-node-app/devora.config.json",
   "summary": {
     "total": 1,
     "errors": 0,
@@ -240,20 +238,20 @@ npx ranger --json
 Inspect all 21 built-in diagnostic rules and their default severity ratings:
 
 ```bash
-npx ranger --list-rules
+npx devora --list-rules
 ```
 
 Or as JSON:
 
 ```bash
-npx ranger --list-rules --json
+npx devora --list-rules --json
 ```
 
 ---
 
 ## CI/CD & GitHub Actions Integration
 
-Ranger is engineered for continuous integration environments. It runs without an interactive TTY, respects standard environment variables (`CI=true`, `NO_COLOR=1`), and provides deterministic exit codes.
+Devora is engineered for continuous integration environments. It runs without an interactive TTY, respects standard environment variables (`CI=true`, `NO_COLOR=1`), and provides deterministic exit codes.
 
 ### GitHub Actions Workflow Example
 
@@ -269,8 +267,8 @@ on:
     branches: [ main ]
 
 jobs:
-  ranger:
-    name: Ranger Health Inspection
+  devora:
+    name: Devora Health Inspection
     runs-on: ubuntu-latest
 
     steps:
@@ -282,8 +280,8 @@ jobs:
         with:
           node-version: 20
 
-      - name: Run Ranger Health Inspection
-        run: npx ranger --fail-on warning
+      - name: Run Devora Health Inspection
+        run: npx devora --fail-on warning
 ```
 
 ### Automated Failure Thresholds
@@ -292,15 +290,15 @@ Select the threshold matching your team's code review standard:
 
 - **Strict Quality Gate**: Fail on warnings to enforce complete documentation and zero hygiene issues:
   ```bash
-  npx ranger --fail-on warning
+  npx devora --fail-on warning
   ```
 - **Standard Gate**: Fail only on blocking structural defects (missing dependencies, broken entry points):
   ```bash
-  npx ranger --fail-on error
+  npx devora --fail-on error
   ```
 - **Non-blocking Informational Step**: Always succeed the pipeline while recording findings in job logs:
   ```bash
-  npx ranger || true
+  npx devora || true
   ```
 
 ---
@@ -333,7 +331,7 @@ $$\text{score} = \max\left(0,\, 100 - \sum \text{penalties}\right)$$
 
 ## Diagnostic Rule Categories
 
-Ranger includes 21 built-in diagnostic rules across four categories:
+Devora includes 21 built-in diagnostic rules across four categories:
 
 ### 1. Configuration (`configuration`)
 - `CFG001`: Missing `package.json` file.
@@ -366,9 +364,9 @@ Ranger includes 21 built-in diagnostic rules across four categories:
 
 ---
 
-## Project Configuration (`ranger.config.json`)
+## Project Configuration (`devora.config.json`)
 
-Customize Ranger for your repository by placing `ranger.config.json` in your project root, or specify an explicit configuration path via `--config <path>`.
+Customize Devora for your repository by placing `devora.config.json` (or `ranger.config.json`) in your project root, or specify an explicit configuration path via `--config <path>`.
 
 ### Configuration Example
 
@@ -431,7 +429,7 @@ const { inspectProject, listRules, calculateHealthScore } = require('devora');
 
 async function checkHealth() {
   const result = await inspectProject(process.cwd(), {
-    configPath: './ranger.config.json'
+    configPath: './devora.config.json'
   });
 
   console.log(`Project:      ${result.project.name}`);
@@ -503,7 +501,7 @@ interface InspectionResult {
 
 ## Development & Testing
 
-Ranger uses Node.js native test runner (`node:test`):
+Devora uses Node.js native test runner (`node:test`):
 
 ```bash
 # Run complete test suite
@@ -520,7 +518,7 @@ git diff --check
 
 ## Current Limitations & Design Notes
 
-- **Dynamic Imports**: Dependencies loaded via arbitrary computed expressions (e.g. `require(variable)`) cannot be statically resolved. Ranger conservatively avoids flagging matching packages as unused candidates (`DEP005`).
+- **Dynamic Imports**: Dependencies loaded via arbitrary computed expressions (e.g. `require(variable)`) cannot be statically resolved. Devora conservatively avoids flagging matching packages as unused candidates (`DEP005`).
 - **Git Metadata Dependency**: Version control rules (`SEC001`, `SEC002`, `ENV004`) require repository metadata and the `git` binary. In non-git environments or release tarballs, these rules skip gracefully without failing the inspection.
 - **Local Code Quality**: The health score reflects code hygiene and project configuration integrity; it is not a formal substitute for automated security penetration testing or full vulnerability CVE scans.
 
