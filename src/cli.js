@@ -2,9 +2,12 @@
 
 'use strict';
 
-const path = require('node:path');
 const pkg = require('../package.json');
 const { inspectProject } = require('./engine');
+const { parseArgs, getHelpText } = require('./formatters/args');
+const { shouldEnableColor } = require('./formatters/colors');
+const { formatTerminal } = require('./formatters/terminal');
+const { formatJson } = require('./formatters/json');
 
 /**
  * CLI execution entry point.
@@ -13,36 +16,56 @@ const { inspectProject } = require('./engine');
  * @returns {Promise<void>}
  */
 async function main(argv = process.argv.slice(2)) {
+  const options = parseArgs(argv);
+
+  // Handle --help
+  if (options.help) {
+    process.stdout.write(getHelpText(pkg.version));
+    process.exitCode = 0;
+    return;
+  }
+
+  // Handle --version
+  if (options.version) {
+    process.stdout.write(`v${pkg.version}\n`);
+    process.exitCode = 0;
+    return;
+  }
+
+  // Handle unknown options gracefully
+  if (options.unknown.length > 0) {
+    process.stderr.write(`Ranger Error: Unknown option "${options.unknown[0]}"\nRun "ranger --help" for available options.\n`);
+    process.exitCode = 1;
+    return;
+  }
+
   try {
-    const targetDir = argv[0] ? path.resolve(process.cwd(), argv[0]) : process.cwd();
+    const result = await inspectProject(options.projectPath);
 
-    process.stdout.write(`Ranger v${pkg.version}\n`);
-
-    const result = await inspectProject(targetDir);
-    const { project, summary, findings } = result;
-
-    process.stdout.write(`\nInspection Target: ${project.name} (${project.path})\n`);
-    process.stdout.write(`Summary: ${summary.total} findings (${summary.errors} errors, ${summary.warnings} warnings, ${summary.info} notices) in ${result.duration}ms\n\n`);
-
-    if (findings.length > 0) {
-      for (const finding of findings) {
-        const tag = `[${finding.severity.toUpperCase()}] [${finding.category}] ${finding.id}:`;
-        const loc = finding.file ? ` (${finding.file})` : '';
-        process.stdout.write(`${tag} ${finding.title}${loc}\n`);
-        process.stdout.write(`  Message: ${finding.message}\n`);
-        process.stdout.write(`  Recommendation: ${finding.recommendation}\n\n`);
-      }
+    if (options.json) {
+      process.stdout.write(formatJson(result));
     } else {
-      process.stdout.write('✓ No issues detected. Project is in good health!\n\n');
+      const enableColor = shouldEnableColor({
+        noColorFlag: options.noColor,
+        env: process.env,
+        isTTY: process.stdout.isTTY
+      });
+      process.stdout.write(formatTerminal(result, pkg.version, enableColor));
     }
 
-    if (summary.errors > 0) {
+    if (result.summary.errors > 0) {
       process.exitCode = 1;
     } else {
       process.exitCode = 0;
     }
   } catch (error) {
-    process.stderr.write(`Ranger Error: ${error.message}\n`);
+    if (options.json) {
+      process.stderr.write(JSON.stringify({
+        error: error.message
+      }, null, 2) + '\n');
+    } else {
+      process.stderr.write(`Ranger Error: ${error.message}\n`);
+    }
     process.exitCode = 1;
   }
 }

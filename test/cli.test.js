@@ -39,7 +39,7 @@ async function cleanupTempProject(dir) {
 test('Package Configuration', async (t) => {
   await t.test('has correct package metadata', () => {
     assert.equal(pkg.name, 'ranger');
-    assert.equal(pkg.version, '0.1.0');
+    assert.equal(pkg.version, '0.2.0');
     assert.equal(pkg.description, 'A lightweight health inspector for JavaScript projects');
     assert.equal(pkg.license, 'MIT');
     assert.equal(pkg.type, 'commonjs');
@@ -75,7 +75,7 @@ test('Public API (src/index.js)', async (t) => {
   await t.test('run() returns backwards-compatible execution result', async () => {
     const result = await ranger.run();
     assert.equal(result.status, 'completed');
-    assert.equal(result.version, '0.1.0');
+    assert.equal(result.version, '0.2.0');
     assert.equal(typeof result.projectRoot, 'string');
     assert.deepEqual(result.rules, ['dependencies', 'environment', 'security', 'configuration']);
     assert.ok(result.inspection);
@@ -138,8 +138,8 @@ test('CLI Executable (src/cli.js)', async (t) => {
     });
 
     assert.equal(result.status, 0, `Process failed with stderr: ${result.stderr}`);
-    assert.ok(result.stdout.includes('Ranger v0.1.0'), 'CLI should output version info');
-    assert.ok(result.stdout.includes('Inspection Target:'), 'CLI should output inspection target');
+    assert.ok(result.stdout.includes('RANGER'), 'CLI should output RANGER header');
+    assert.ok(result.stdout.includes('Target:'), 'CLI should output inspection target');
   });
 
   await t.test('runs successfully with custom project directory argument (.)', () => {
@@ -148,8 +148,8 @@ test('CLI Executable (src/cli.js)', async (t) => {
     });
 
     assert.equal(result.status, 0, `Process failed with stderr: ${result.stderr}`);
-    assert.ok(result.stdout.includes('Ranger v0.1.0'), 'CLI should output version info');
-    assert.ok(result.stdout.includes('Inspection Target:'), 'CLI should output inspection target');
+    assert.ok(result.stdout.includes('RANGER'), 'CLI should output RANGER header');
+    assert.ok(result.stdout.includes('Target:'), 'CLI should output inspection target');
   });
 });
 
@@ -513,6 +513,193 @@ test('Diagnostic Engine Comprehensive Tests', async (t) => {
       const result = await inspectProject(dir);
       const secFindings = result.findings.filter(f => f.category === 'security');
       assert.equal(secFindings.length, 0, 'Explicit dummy credentials should not trigger SEC003 findings');
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+});
+
+test('Step 3 CLI & JSON Presentation Features', async (t) => {
+  const cliPath = path.resolve(__dirname, '../src/cli.js');
+
+  // 1. Default human-readable output
+  await t.test('1. Default human-readable output formatting', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'cli-human-demo', version: '1.0.0' })
+    });
+
+    try {
+      const res = spawnSync(process.execPath, [cliPath, dir], { encoding: 'utf8' });
+      assert.equal(res.status, 0);
+      assert.ok(res.stdout.includes('RANGER'), 'Output includes RANGER branding');
+      assert.ok(res.stdout.includes('cli-human-demo'), 'Output includes project name');
+      assert.ok(res.stdout.includes('Summary:'), 'Output includes summary');
+      assert.ok(res.stdout.includes('Status:'), 'Output includes final status');
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  // 2. JSON output and successful JSON.parse()
+  await t.test('2. JSON output parses successfully and preserves structure', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'cli-json-demo', version: '1.0.0' })
+    });
+
+    try {
+      const res = spawnSync(process.execPath, [cliPath, dir, '--json'], { encoding: 'utf8' });
+      assert.equal(res.status, 0);
+
+      const parsed = JSON.parse(res.stdout);
+      assert.equal(typeof parsed, 'object');
+      assert.equal(parsed.project.name, 'cli-json-demo');
+      assert.ok(parsed.summary);
+      assert.ok(Array.isArray(parsed.findings));
+      assert.equal(typeof parsed.duration, 'number');
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  // 3. JSON output contains no ANSI escape sequences or banners
+  await t.test('3. JSON output contains no ANSI escape sequences or decorative banners', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'clean-json-test', version: '1.0.0' })
+    });
+
+    try {
+      const res = spawnSync(process.execPath, [cliPath, dir, '--json'], { encoding: 'utf8' });
+      assert.equal(res.status, 0);
+      assert.ok(!res.stdout.includes('\x1b['), 'JSON stdout must not contain ANSI escapes');
+      assert.ok(!res.stdout.includes('RANGER v'), 'JSON stdout must not contain banner text');
+      assert.doesNotThrow(() => JSON.parse(res.stdout));
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  // 4. --no-color behaviour
+  await t.test('4. --no-color disables ANSI escape codes', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'nocolor-flag-test', version: '1.0.0' })
+    });
+
+    try {
+      const res = spawnSync(process.execPath, [cliPath, dir, '--no-color'], { encoding: 'utf8' });
+      assert.equal(res.status, 0);
+      assert.ok(!res.stdout.includes('\x1b['), '--no-color must strip ANSI escapes');
+      assert.ok(res.stdout.includes('RANGER'), 'Content is still displayed');
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  // 5. NO_COLOR environment variable
+  await t.test('5. NO_COLOR environment variable disables ANSI escape codes', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'nocolor-env-test', version: '1.0.0' })
+    });
+
+    try {
+      const res = spawnSync(process.execPath, [cliPath, dir], {
+        encoding: 'utf8',
+        env: { ...process.env, NO_COLOR: '1' }
+      });
+      assert.equal(res.status, 0);
+      assert.ok(!res.stdout.includes('\x1b['), 'NO_COLOR must strip ANSI escapes');
+      assert.ok(res.stdout.includes('RANGER'), 'Content is still displayed');
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  // 6. --help output
+  await t.test('6. --help displays usage information and exits with 0', () => {
+    const res = spawnSync(process.execPath, [cliPath, '--help'], { encoding: 'utf8' });
+    assert.equal(res.status, 0);
+    assert.ok(res.stdout.includes('USAGE:'));
+    assert.ok(res.stdout.includes('--json'));
+    assert.ok(res.stdout.includes('--no-color'));
+  });
+
+  // 7. --version output
+  await t.test('7. --version displays installed version and exits with 0', () => {
+    const res = spawnSync(process.execPath, [cliPath, '--version'], { encoding: 'utf8' });
+    assert.equal(res.status, 0);
+    assert.ok(res.stdout.startsWith('v'));
+  });
+
+  // 8. Custom project directory
+  await t.test('8. Custom project directory is targeted correctly in CLI', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'custom-dir-project', version: '1.0.0' })
+    });
+
+    try {
+      const res = spawnSync(process.execPath, [cliPath, dir], { encoding: 'utf8' });
+      assert.equal(res.status, 0);
+      assert.ok(res.stdout.includes('custom-dir-project'));
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  // 9. Invalid project path
+  await t.test('9. Invalid project path exits with 1 and prints clean error', () => {
+    const nonExistent = path.join(os.tmpdir(), `non-existent-ranger-${Date.now()}`);
+    const res = spawnSync(process.execPath, [cliPath, nonExistent], { encoding: 'utf8' });
+    assert.equal(res.status, 1);
+    assert.ok(res.stderr.includes('Ranger Error:'));
+  });
+
+  // 10. Unknown CLI arguments
+  await t.test('10. Unknown CLI arguments exit with 1 and inform user', () => {
+    const res = spawnSync(process.execPath, [cliPath, '--unknown-flag'], { encoding: 'utf8' });
+    assert.equal(res.status, 1);
+    assert.ok(res.stderr.includes('Unknown option "--unknown-flag"'));
+    assert.ok(res.stderr.includes('--help'));
+  });
+
+  // 11. Secret redaction in both human and JSON output
+  await t.test('11. Secret redaction verified in both human and JSON output', async () => {
+    const rawSecret = 'AKIA' + 'M1N2B3V4C5X6Z7Y8';
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'redact-test', version: '1.0.0' }),
+      'auth.js': `const awsAccessKey = "${rawSecret}";`
+    });
+
+    try {
+      // Human output
+      const humanRes = spawnSync(process.execPath, [cliPath, dir], { encoding: 'utf8' });
+      assert.ok(!humanRes.stdout.includes(rawSecret), 'Secret must not be in human stdout');
+      assert.ok(!humanRes.stderr.includes(rawSecret), 'Secret must not be in human stderr');
+      assert.ok(humanRes.stdout.includes('Potential AWS Access Key ID'));
+
+      // JSON output
+      const jsonRes = spawnSync(process.execPath, [cliPath, dir, '--json'], { encoding: 'utf8' });
+      assert.ok(!jsonRes.stdout.includes(rawSecret), 'Secret must not be in JSON stdout');
+      assert.ok(!jsonRes.stderr.includes(rawSecret), 'Secret must not be in JSON stderr');
+      const parsed = JSON.parse(jsonRes.stdout);
+      const secretFinding = parsed.findings.find(f => f.id === 'SEC003');
+      assert.ok(secretFinding, 'Secret finding should exist in JSON');
+      assert.ok(!JSON.stringify(secretFinding).includes(rawSecret));
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  // 12. Non-zero exit code when critical errors exist
+  await t.test('12. CLI exits with code 1 when critical errors exist', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({
+        name: 'error-exit-test',
+        dependencies: { 'missing-dep-pkg': '^1.0.0' }
+      })
+    });
+
+    try {
+      const res = spawnSync(process.execPath, [cliPath, dir], { encoding: 'utf8' });
+      assert.equal(res.status, 1, 'Should exit with code 1 when errors exist');
     } finally {
       await cleanupTempProject(dir);
     }

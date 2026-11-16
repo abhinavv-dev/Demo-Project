@@ -1,5 +1,6 @@
 'use strict';
 
+const pkg = require('../package.json');
 const { inspectProject, rules } = require('./engine');
 
 /**
@@ -23,7 +24,7 @@ async function run(options = {}) {
 
   return {
     status: 'completed',
-    version: '0.1.0',
+    version: pkg.version,
     projectRoot: inspection.project.path,
     rules: Object.keys(rules),
     message: `Inspection completed with ${inspection.summary.errors} errors, ${inspection.summary.warnings} warnings, and ${inspection.summary.info} notices.`,
