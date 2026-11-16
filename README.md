@@ -1,16 +1,16 @@
-# Devora (`devora`)
+# Radar (`@abhinavvsharmaa/radar`)
 
 A lightweight health inspector for JavaScript and Node.js projects.
 
-Devora scans your project to identify configuration problems, dependency issues, environment inconsistencies, security risks, and code hygiene gaps before they reach production. Every completed inspection produces a deterministic **Health Score (0–100)**, a corresponding **Letter Grade (A–F)**, and actionable diagnostic findings.
+Radar scans your project to identify configuration problems, dependency issues, environment inconsistencies, security risks, and code hygiene gaps before they reach production. Every completed inspection produces a deterministic **Health Score (0–100)**, a corresponding **Letter Grade (A–F)**, and actionable diagnostic findings.
 
-Devora requires **zero external dependencies**, runs natively on **Node.js >=18**, and is designed for individual developers, team code reviews, CI/CD automation, and GitHub Actions workflows.
+Radar requires **zero external dependencies**, runs natively on **Node.js >=18**, and is designed for individual developers, team code reviews, CI/CD automation, and GitHub Actions workflows.
 
 ---
 
 ## Table of Contents
 
-- [Why Devora?](#why-devora)
+- [Why Radar?](#why-radar)
 - [Key Features](#key-features)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
@@ -27,7 +27,7 @@ Devora requires **zero external dependencies**, runs natively on **Node.js >=18*
   - [Penalty Weights](#penalty-weights)
   - [Letter Grade Thresholds](#letter-grade-thresholds)
 - [Diagnostic Rule Categories](#diagnostic-rule-categories)
-- [Project Configuration (`devora.config.json`)](#project-configuration-devoraconfigjson)
+- [Project Configuration (`radar.config.json`)](#project-configuration-radarconfigjson)
   - [Configuration Example](#configuration-example)
   - [Configuration Schema & Properties](#configuration-schema--properties)
 - [Programmatic API](#programmatic-api)
@@ -41,7 +41,7 @@ Devora requires **zero external dependencies**, runs natively on **Node.js >=18*
 
 ---
 
-## Why Devora?
+## Why Radar?
 
 Modern JavaScript projects frequently suffer from subtle configuration and hygiene drift:
 - Unused or undeclared packages lurking in `package.json`.
@@ -52,14 +52,14 @@ Modern JavaScript projects frequently suffer from subtle configuration and hygie
 - Broken entry points (`main` or `bin` pointing to non-existent files).
 - Missing Node.js runtime engine constraints.
 
-Devora provides an instant, zero-setup sanity check that diagnoses these issues in milliseconds.
+Radar provides an instant, zero-setup sanity check that diagnoses these issues in milliseconds.
 
 ---
 
 ## Key Features
 
 - **Project Health Scoring**: Deterministic 0–100 health score with letter grades (A through F) reflecting project health.
-- **Configurable Rules & Thresholds**: Customize penalty deductions, severity levels, rule exclusions, and grade thresholds in `devora.config.json` (also supports backwards-compatible `ranger.config.json`).
+- **Configurable Rules & Thresholds**: Customize penalty deductions, severity levels, rule exclusions, and grade thresholds in `radar.config.json` (also supports backwards-compatible `ranger.config.json`).
 - **CI/CD Ready**: Configurable failure thresholds via `--fail-on <severity>` and standardized exit codes (0, 1, 2).
 - **Monorepo & Workspaces Support**: Automatically resolves hoisted dependencies and root lockfiles for npm, yarn, and pnpm workspaces.
 - **Filesystem & Symlink Resilience**: Built-in protection against circular symlinks, permission errors, and symlink traversal escapes.
@@ -76,20 +76,20 @@ Devora provides an instant, zero-setup sanity check that diagnoses these issues 
 No installation required:
 
 ```bash
-npx devora
+npx @abhinavvsharmaa/radar
 ```
 
 ### Global Installation
 
 ```bash
-npm install -g devora
-devora
+npm install -g @abhinavvsharmaa/radar
+radar
 ```
 
 ### Local Development Dependency
 
 ```bash
-npm install --save-dev devora
+npm install --save-dev @abhinavvsharmaa/radar
 ```
 
 Add to your `package.json` scripts:
@@ -97,8 +97,8 @@ Add to your `package.json` scripts:
 ```json
 {
   "scripts": {
-    "doctor": "devora",
-    "check:health": "devora --fail-on warning"
+    "doctor": "radar",
+    "check:health": "radar --fail-on warning"
   }
 }
 ```
@@ -110,25 +110,25 @@ Add to your `package.json` scripts:
 Inspect the current working directory:
 
 ```bash
-npx devora
+npx @abhinavvsharmaa/radar
 ```
 
 Inspect a specific directory:
 
 ```bash
-npx devora ./my-project
+npx @abhinavvsharmaa/radar ./my-project
 ```
 
 Run in strict CI mode (fails if any warnings or errors exist):
 
 ```bash
-npx devora --fail-on warning
+npx @abhinavvsharmaa/radar --fail-on warning
 ```
 
 Output machine-readable JSON for scripting or pipeline aggregation:
 
 ```bash
-npx devora --json
+npx @abhinavvsharmaa/radar --json
 ```
 
 ---
@@ -137,14 +137,14 @@ npx devora --json
 
 ```text
 USAGE:
-  devora [path] [options]
-  npx devora [path] [options]
+  radar [path] [options]
+  npx @abhinavvsharmaa/radar [path] [options]
 
 ARGUMENTS:
   [path]                 Target project directory (defaults to current directory)
 
 OPTIONS:
-  --config <path>        Explicit path to devora.config.json
+  --config <path>        Explicit path to radar.config.json
   --fail-on <severity>   Set failure threshold for CI exit code: error, warning, info
   --json                 Output findings and score as machine-readable JSON
   --score                Display health score and summary in a concise format
@@ -156,7 +156,7 @@ OPTIONS:
 
 ### Exit Code Contract
 
-Devora follows standard UNIX and CI/CD process exit codes:
+Radar follows standard UNIX and CI/CD process exit codes:
 
 | Exit Code | Meaning | Condition |
 | :---: | :--- | :--- |
@@ -176,11 +176,11 @@ Devora follows standard UNIX and CI/CD process exit codes:
 Provides a minimal one-line status summary:
 
 ```bash
-npx devora --score
+radar --score
 ```
 
 ```text
-DEVORA v0.3.0 — my-node-app
+RADAR v0.3.0 — my-node-app
 Health Score: 93/100 (Grade A)
 Breakdown:    0 errors, 1 warning, 0 notices (45ms)
 ```
@@ -190,7 +190,7 @@ Breakdown:    0 errors, 1 warning, 0 notices (45ms)
 Emits structured, unadorned JSON directly to `stdout`. Diagnostic banners and ANSI escapes are omitted automatically:
 
 ```bash
-npx devora --json
+radar --json
 ```
 
 ```json
@@ -199,7 +199,7 @@ npx devora --json
     "name": "my-node-app",
     "path": "/Users/developer/my-node-app"
   },
-  "configPath": "/Users/developer/my-node-app/devora.config.json",
+  "configPath": "/Users/developer/my-node-app/radar.config.json",
   "summary": {
     "total": 1,
     "errors": 0,
@@ -238,20 +238,20 @@ npx devora --json
 Inspect all 21 built-in diagnostic rules and their default severity ratings:
 
 ```bash
-npx devora --list-rules
+radar --list-rules
 ```
 
 Or as JSON:
 
 ```bash
-npx devora --list-rules --json
+radar --list-rules --json
 ```
 
 ---
 
 ## CI/CD & GitHub Actions Integration
 
-Devora is engineered for continuous integration environments. It runs without an interactive TTY, respects standard environment variables (`CI=true`, `NO_COLOR=1`), and provides deterministic exit codes.
+Radar is engineered for continuous integration environments. It runs without an interactive TTY, respects standard environment variables (`CI=true`, `NO_COLOR=1`), and provides deterministic exit codes.
 
 ### GitHub Actions Workflow Example
 
@@ -267,8 +267,8 @@ on:
     branches: [ main ]
 
 jobs:
-  devora:
-    name: Devora Health Inspection
+  radar:
+    name: Radar Health Inspection
     runs-on: ubuntu-latest
 
     steps:
@@ -280,8 +280,8 @@ jobs:
         with:
           node-version: 20
 
-      - name: Run Devora Health Inspection
-        run: npx devora --fail-on warning
+      - name: Run Radar Health Inspection
+        run: npx @abhinavvsharmaa/radar --fail-on warning
 ```
 
 ### Automated Failure Thresholds
@@ -290,15 +290,15 @@ Select the threshold matching your team's code review standard:
 
 - **Strict Quality Gate**: Fail on warnings to enforce complete documentation and zero hygiene issues:
   ```bash
-  npx devora --fail-on warning
+  radar --fail-on warning
   ```
 - **Standard Gate**: Fail only on blocking structural defects (missing dependencies, broken entry points):
   ```bash
-  npx devora --fail-on error
+  radar --fail-on error
   ```
 - **Non-blocking Informational Step**: Always succeed the pipeline while recording findings in job logs:
   ```bash
-  npx devora || true
+  radar || true
   ```
 
 ---
@@ -331,7 +331,7 @@ $$\text{score} = \max\left(0,\, 100 - \sum \text{penalties}\right)$$
 
 ## Diagnostic Rule Categories
 
-Devora includes 21 built-in diagnostic rules across four categories:
+Radar includes 21 built-in diagnostic rules across four categories:
 
 ### 1. Configuration (`configuration`)
 - `CFG001`: Missing `package.json` file.
@@ -364,9 +364,9 @@ Devora includes 21 built-in diagnostic rules across four categories:
 
 ---
 
-## Project Configuration (`devora.config.json`)
+## Project Configuration (`radar.config.json`)
 
-Customize Devora for your repository by placing `devora.config.json` (or `ranger.config.json`) in your project root, or specify an explicit configuration path via `--config <path>`.
+Customize Radar for your repository by placing `radar.config.json` (or `ranger.config.json`) in your project root, or specify an explicit configuration path via `--config <path>`.
 
 ### Configuration Example
 
@@ -420,16 +420,16 @@ Customize Devora for your repository by placing `devora.config.json` (or `ranger
 
 ## Programmatic API
 
-Devora exports a full programmatic JavaScript API for custom tooling, developer portals, or build scripts.
+Radar exports a full programmatic JavaScript API for custom tooling, developer portals, or build scripts.
 
 ### JavaScript CommonJS Usage
 
 ```javascript
-const { inspectProject, listRules, calculateHealthScore } = require('devora');
+const { inspectProject, listRules, calculateHealthScore } = require('@abhinavvsharmaa/radar');
 
 async function checkHealth() {
   const result = await inspectProject(process.cwd(), {
-    configPath: './devora.config.json'
+    configPath: './radar.config.json'
   });
 
   console.log(`Project:      ${result.project.name}`);
@@ -501,7 +501,7 @@ interface InspectionResult {
 
 ## Development & Testing
 
-Devora uses Node.js native test runner (`node:test`):
+Radar uses Node.js native test runner (`node:test`):
 
 ```bash
 # Run complete test suite
@@ -518,7 +518,7 @@ git diff --check
 
 ## Current Limitations & Design Notes
 
-- **Dynamic Imports**: Dependencies loaded via arbitrary computed expressions (e.g. `require(variable)`) cannot be statically resolved. Devora conservatively avoids flagging matching packages as unused candidates (`DEP005`).
+- **Dynamic Imports**: Dependencies loaded via arbitrary computed expressions (e.g. `require(variable)`) cannot be statically resolved. Radar conservatively avoids flagging matching packages as unused candidates (`DEP005`).
 - **Git Metadata Dependency**: Version control rules (`SEC001`, `SEC002`, `ENV004`) require repository metadata and the `git` binary. In non-git environments or release tarballs, these rules skip gracefully without failing the inspection.
 - **Local Code Quality**: The health score reflects code hygiene and project configuration integrity; it is not a formal substitute for automated security penetration testing or full vulnerability CVE scans.
 

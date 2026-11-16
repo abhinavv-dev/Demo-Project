@@ -108,7 +108,7 @@ function validateConfig(config) {
           throw new Error('Each item in "rules.disabled" must be a non-empty string rule ID.');
         }
         if (!isKnownRule(ruleId)) {
-          throw new Error(`Unknown rule ID in "rules.disabled": "${ruleId}". Run "devora --list-rules" to see available rules.`);
+          throw new Error(`Unknown rule ID in "rules.disabled": "${ruleId}". Run "radar --list-rules" to see available rules.`);
         }
       }
       normalized.rules.disabled = [...config.rules.disabled];
@@ -120,7 +120,7 @@ function validateConfig(config) {
       }
       for (const [ruleId, sev] of Object.entries(config.rules.severity)) {
         if (!isKnownRule(ruleId)) {
-          throw new Error(`Unknown rule ID in "rules.severity": "${ruleId}". Run "devora --list-rules" to see available rules.`);
+          throw new Error(`Unknown rule ID in "rules.severity": "${ruleId}". Run "radar --list-rules" to see available rules.`);
         }
         if (!ALLOWED_SEVERITIES.has(sev)) {
           throw new Error(`Invalid severity value "${sev}" for rule "${ruleId}". Allowed severities: "error", "warning", "info".`);
@@ -226,8 +226,8 @@ async function loadConfig(projectRoot, explicitConfigPath = null) {
       throw new Error(`Specified configuration path is not a file: "${targetPath}"`);
     }
   } else {
-    // Check devora.config.json first, then fall back to ranger.config.json for backwards compatibility
-    const primaryPath = path.join(projectRoot, 'devora.config.json');
+    // Check radar.config.json first, then fall back to ranger.config.json for backwards compatibility
+    const primaryPath = path.join(projectRoot, 'radar.config.json');
     const legacyPath = path.join(projectRoot, 'ranger.config.json');
 
     try {

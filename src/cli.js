@@ -73,7 +73,7 @@ async function main(argv = process.argv.slice(2)) {
     if (options.json) {
       process.stderr.write(JSON.stringify({ error: options.error }, null, 2) + '\n');
     } else {
-      process.stderr.write(`Devora Error: ${options.error}\nRun "devora --help" for available options.\n`);
+      process.stderr.write(`Radar Error: ${options.error}\nRun "radar --help" for available options.\n`);
     }
     process.exitCode = 2;
     return;
@@ -85,7 +85,7 @@ async function main(argv = process.argv.slice(2)) {
     if (options.json) {
       process.stderr.write(JSON.stringify({ error: msg }, null, 2) + '\n');
     } else {
-      process.stderr.write(`Devora Error: ${msg}\nRun "devora --help" for available options.\n`);
+      process.stderr.write(`Radar Error: ${msg}\nRun "radar --help" for available options.\n`);
     }
     process.exitCode = 2;
     return;
@@ -111,7 +111,7 @@ async function main(argv = process.argv.slice(2)) {
         error: error.message
       }, null, 2) + '\n');
     } else {
-      process.stderr.write(`Devora Error: ${error.message}\n`);
+      process.stderr.write(`Radar Error: ${error.message}\n`);
     }
     // Execution / configuration / directory failures exit with code 2
     process.exitCode = 2;

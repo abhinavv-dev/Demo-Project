@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Standard registry of diagnostic rules supported by Devora.
+ * Standard registry of diagnostic rules supported by Radar.
  */
 const KNOWN_RULES = [
   // Configuration
@@ -159,7 +159,7 @@ function getRule(id) {
 }
 
 /**
- * Check if a rule ID is recognized by Devora.
+ * Check if a rule ID is recognized by Radar.
  *
  * @param {string} id
  * @returns {boolean}

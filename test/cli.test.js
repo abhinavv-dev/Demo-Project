@@ -9,8 +9,8 @@ const os = require('node:os');
 const { spawnSync, execFileSync } = require('node:child_process');
 
 const pkg = require('../package.json');
-const devora = require('../src/index');
-const ranger = devora; // Backwards compatibility alias
+const radar = require('../src/index');
+const ranger = radar; // Backwards compatibility alias
 const { inspectProject } = require('../src/engine');
 const dependenciesRule = require('../src/rules/dependencies');
 const environmentRule = require('../src/rules/environment');
@@ -39,20 +39,21 @@ async function cleanupTempProject(dir) {
 
 test('Package Configuration', async (t) => {
   await t.test('has correct package metadata', () => {
-    assert.equal(pkg.name, 'devora');
+    assert.equal(pkg.name, '@abhinavvsharmaa/radar');
     assert.equal(pkg.version, '0.3.0');
     assert.equal(pkg.description, 'A lightweight health inspector for JavaScript projects');
     assert.equal(pkg.license, 'MIT');
     assert.equal(pkg.type, 'commonjs');
+    assert.deepEqual(pkg.publishConfig, { access: 'public' });
   });
 
   await t.test('has valid entry points and bin mappings', () => {
     assert.equal(pkg.main, 'src/index.js');
     assert.ok(pkg.bin, 'bin field must exist');
-    assert.equal(pkg.bin.devora, 'src/cli.js');
+    assert.equal(pkg.bin.radar, 'src/cli.js');
 
     const mainPath = path.resolve(__dirname, '..', pkg.main);
-    const binPath = path.resolve(__dirname, '..', pkg.bin.devora);
+    const binPath = path.resolve(__dirname, '..', pkg.bin.radar);
 
     assert.ok(fs.existsSync(mainPath), `Main file does not exist: ${mainPath}`);
     assert.ok(fs.existsSync(binPath), `Bin file does not exist: ${binPath}`);
@@ -139,7 +140,7 @@ test('CLI Executable (src/cli.js)', async (t) => {
     });
 
     assert.equal(result.status, 0, `Process failed with stderr: ${result.stderr}`);
-    assert.ok(result.stdout.includes('DEVORA'), 'CLI should output DEVORA header');
+    assert.ok(result.stdout.includes('RADAR'), 'CLI should output RADAR header');
     assert.ok(result.stdout.includes('Target:'), 'CLI should output inspection target');
   });
 
@@ -149,7 +150,7 @@ test('CLI Executable (src/cli.js)', async (t) => {
     });
 
     assert.equal(result.status, 0, `Process failed with stderr: ${result.stderr}`);
-    assert.ok(result.stdout.includes('DEVORA'), 'CLI should output DEVORA header');
+    assert.ok(result.stdout.includes('RADAR'), 'CLI should output RADAR header');
     assert.ok(result.stdout.includes('Target:'), 'CLI should output inspection target');
   });
 });
@@ -532,7 +533,7 @@ test('Step 3 CLI & JSON Presentation Features', async (t) => {
     try {
       const res = spawnSync(process.execPath, [cliPath, dir], { encoding: 'utf8' });
       assert.equal(res.status, 0);
-      assert.ok(res.stdout.includes('DEVORA'), 'Output includes DEVORA branding');
+      assert.ok(res.stdout.includes('RADAR'), 'Output includes RADAR branding');
       assert.ok(res.stdout.includes('cli-human-demo'), 'Output includes project name');
       assert.ok(res.stdout.includes('Summary:'), 'Output includes summary');
       assert.ok(res.stdout.includes('Status:'), 'Output includes final status');
@@ -572,7 +573,7 @@ test('Step 3 CLI & JSON Presentation Features', async (t) => {
       const res = spawnSync(process.execPath, [cliPath, dir, '--json'], { encoding: 'utf8' });
       assert.equal(res.status, 0);
       assert.ok(!res.stdout.includes('\x1b['), 'JSON stdout must not contain ANSI escapes');
-      assert.ok(!res.stdout.includes('DEVORA v'), 'JSON stdout must not contain banner text');
+      assert.ok(!res.stdout.includes('RADAR v'), 'JSON stdout must not contain banner text');
       assert.doesNotThrow(() => JSON.parse(res.stdout));
     } finally {
       await cleanupTempProject(dir);
@@ -589,7 +590,7 @@ test('Step 3 CLI & JSON Presentation Features', async (t) => {
       const res = spawnSync(process.execPath, [cliPath, dir, '--no-color'], { encoding: 'utf8' });
       assert.equal(res.status, 0);
       assert.ok(!res.stdout.includes('\x1b['), '--no-color must strip ANSI escapes');
-      assert.ok(res.stdout.includes('DEVORA'), 'Content is still displayed');
+      assert.ok(res.stdout.includes('RADAR'), 'Content is still displayed');
     } finally {
       await cleanupTempProject(dir);
     }
@@ -608,7 +609,7 @@ test('Step 3 CLI & JSON Presentation Features', async (t) => {
       });
       assert.equal(res.status, 0);
       assert.ok(!res.stdout.includes('\x1b['), 'NO_COLOR must strip ANSI escapes');
-      assert.ok(res.stdout.includes('DEVORA'), 'Content is still displayed');
+      assert.ok(res.stdout.includes('RADAR'), 'Content is still displayed');
     } finally {
       await cleanupTempProject(dir);
     }
@@ -647,10 +648,10 @@ test('Step 3 CLI & JSON Presentation Features', async (t) => {
 
   // 9. Invalid project path
   await t.test('9. Invalid project path exits with non-zero and prints clean error', () => {
-    const nonExistent = path.join(os.tmpdir(), `non-existent-devora-${Date.now()}`);
+    const nonExistent = path.join(os.tmpdir(), `non-existent-radar-${Date.now()}`);
     const res = spawnSync(process.execPath, [cliPath, nonExistent], { encoding: 'utf8' });
     assert.ok(res.status === 1 || res.status === 2, 'Execution failure should exit with non-zero code');
-    assert.ok(res.stderr.includes('Devora Error:'));
+    assert.ok(res.stderr.includes('Radar Error:'));
   });
 
   // 10. Unknown CLI arguments
@@ -823,11 +824,11 @@ test('Step 4 Health Scoring & Configuration Engine', async (t) => {
   });
 
   // Configuration tests
-  await t.test('10. Automatic configuration discovery (devora.config.json & backwards compatibility)', async () => {
-    // 10a. Primary config file devora.config.json
-    const dirDevora = await createTempProject({
-      'package.json': JSON.stringify({ name: 'auto-config-devora', version: '1.0.0' }),
-      'devora.config.json': JSON.stringify({
+  await t.test('10. Automatic configuration discovery (radar.config.json & backwards compatibility)', async () => {
+    // 10a. Primary config file radar.config.json
+    const dirRadar = await createTempProject({
+      'package.json': JSON.stringify({ name: 'auto-config-radar', version: '1.0.0' }),
+      'radar.config.json': JSON.stringify({
         rules: {
           disabled: ['CFG006']
         }
@@ -835,12 +836,12 @@ test('Step 4 Health Scoring & Configuration Engine', async (t) => {
     });
 
     try {
-      const res = await inspectProject(dirDevora);
-      assert.ok(res.configPath.includes('devora.config.json'));
+      const res = await inspectProject(dirRadar);
+      assert.ok(res.configPath.includes('radar.config.json'));
       const cfgFinding = res.findings.find(f => f.id === 'CFG006');
-      assert.equal(cfgFinding, undefined, 'CFG006 should be disabled by auto-discovered devora.config.json');
+      assert.equal(cfgFinding, undefined, 'CFG006 should be disabled by auto-discovered radar.config.json');
     } finally {
-      await cleanupTempProject(dirDevora);
+      await cleanupTempProject(dirRadar);
     }
 
     // 10b. Backwards compatibility fallback to ranger.config.json
@@ -1002,10 +1003,10 @@ test('Step 4 Health Scoring & Configuration Engine', async (t) => {
     }
   });
 
-  await t.test('17. Malformed JSON in devora.config.json rejects with clear error', async () => {
+  await t.test('17. Malformed JSON in radar.config.json rejects with clear error', async () => {
     const dir = await createTempProject({
       'package.json': JSON.stringify({ name: 'broken-config-json', version: '1.0.0' }),
-      'devora.config.json': '{ broken json syntax '
+      'radar.config.json': '{ broken json syntax '
     });
 
     try {

@@ -5,7 +5,7 @@ const path = require('node:path');
 const VALID_FAIL_ON_SEVERITIES = new Set(['error', 'warning', 'info']);
 
 /**
- * Parse command-line arguments for the Devora CLI.
+ * Parse command-line arguments for the Radar CLI.
  *
  * @param {string[]} argv - Array of command-line argument strings.
  * @returns {{
@@ -113,18 +113,18 @@ function parseArgs(argv = []) {
  * @returns {string}
  */
 function getHelpText(version) {
-  return `Devora v${version}
+  return `Radar v${version}
 A lightweight health inspector for JavaScript and Node.js projects.
 
 USAGE:
-  devora [path] [options]
-  npx devora [path] [options]
+  radar [path] [options]
+  npx @abhinavvsharmaa/radar [path] [options]
 
 ARGUMENTS:
   [path]                 Target project directory (defaults to current directory)
 
 OPTIONS:
-  --config <path>        Explicit path to devora.config.json
+  --config <path>        Explicit path to radar.config.json
   --fail-on <severity>   Set failure threshold for CI exit code: error, warning, info
   --json                 Output findings and score as machine-readable JSON
   --score                Display health score and summary in a concise format
@@ -139,16 +139,16 @@ EXIT CODES:
   2   Invalid arguments, configuration errors, or execution failures
 
 EXAMPLES:
-  devora
-  devora .
-  devora /path/to/project
-  devora --fail-on warning
-  devora --fail-on error --json
-  devora --score
-  devora --list-rules
-  devora --config devora.config.json
-  devora --json
-  devora --no-color
+  radar
+  radar .
+  radar /path/to/project
+  radar --fail-on warning
+  radar --fail-on error --json
+  radar --score
+  radar --list-rules
+  radar --config radar.config.json
+  radar --json
+  radar --no-color
 `;
 }
 

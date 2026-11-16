@@ -1,10 +1,13 @@
 {
-  "name": "devora",
+  "name": "@abhinavvsharmaa/radar",
   "version": "0.3.0",
   "description": "A lightweight health inspector for JavaScript projects",
   "main": "src/index.js",
   "bin": {
-    "devora": "src/cli.js"
+    "radar": "src/cli.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "type": "commonjs",
   "engines": {
@@ -18,8 +21,7 @@
     "README.md"
   ],
   "keywords": [
-    "devora",
-    "ranger",
+    "radar",
     "health-check",
     "inspector",
     "diagnostics",
