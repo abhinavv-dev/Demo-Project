@@ -7,7 +7,12 @@ const {
   readJsonFile,
   walkFiles,
   extractImportSpecifiers,
-  getPackageNameFromSpecifier
+  analyzeDynamicImports,
+  isPackageReferencedDynamically,
+  getPackageNameFromSpecifier,
+  findWorkspaceRoot,
+  getWorkspacePackageNames,
+  isPackageReferencedInScripts
 } = require('../utils/fs');
 
 const KNOWN_LOCKFILES = [
@@ -27,10 +32,11 @@ const dependenciesRule = {
    *
    * @param {Object} context
    * @param {string} context.projectRoot
+   * @param {Map<string, string[]>} [context.fileCache]
    * @returns {Promise<Array<Object>>}
    */
   async run(context = {}) {
-    const { projectRoot } = context;
+    const { projectRoot, fileCache } = context;
     const findings = [];
     const pkgPath = path.join(projectRoot, 'package.json');
 
@@ -106,14 +112,35 @@ const dependenciesRule = {
       }
     }
 
+    // Check if this project is part of a monorepo workspace
+    const workspaceRoot = await findWorkspaceRoot(projectRoot);
+    let workspacePackages = new Set();
+    if (workspaceRoot) {
+      workspacePackages = await getWorkspacePackageNames(workspaceRoot);
+    } else if (pkg.workspaces) {
+      // Current project is itself the monorepo root
+      workspacePackages = await getWorkspacePackageNames(projectRoot);
+    }
+
     // 3. Check for Lockfile Consistency
     const hasAnyDeps = Object.keys(declaredDeps).length > 0 || Object.keys(declaredDevDeps).length > 0;
     if (hasAnyDeps) {
       let foundLockfile = false;
+      // Check local lockfile first
       for (const lockfile of KNOWN_LOCKFILES) {
         if (await exists(path.join(projectRoot, lockfile))) {
           foundLockfile = true;
           break;
+        }
+      }
+
+      // If not found locally, check workspace root lockfile if inside a monorepo workspace
+      if (!foundLockfile && workspaceRoot) {
+        for (const lockfile of KNOWN_LOCKFILES) {
+          if (await exists(path.join(workspaceRoot, lockfile))) {
+            foundLockfile = true;
+            break;
+          }
         }
       }
 
@@ -135,6 +162,9 @@ const dependenciesRule = {
     const nodeModulesPath = path.join(projectRoot, 'node_modules');
     const hasNodeModules = await exists(nodeModulesPath);
 
+    const rootNodeModulesPath = workspaceRoot ? path.join(workspaceRoot, 'node_modules') : null;
+    const hasRootNodeModules = rootNodeModulesPath ? await exists(rootNodeModulesPath) : false;
+
     // Combine dependencies and devDependencies to check for installation
     const allExpected = { ...declaredDeps, ...declaredDevDeps };
 
@@ -144,8 +174,19 @@ const dependenciesRule = {
         continue;
       }
 
-      const depInstallPath = path.join(nodeModulesPath, ...depName.split('/'));
-      const isInstalled = hasNodeModules && (await exists(depInstallPath));
+      // Check if installed locally in project's node_modules
+      const depParts = depName.split('/');
+      let isInstalled = hasNodeModules && (await exists(path.join(nodeModulesPath, ...depParts)));
+
+      // If not installed locally, check hoisted root node_modules for monorepos
+      if (!isInstalled && hasRootNodeModules) {
+        isInstalled = await exists(path.join(rootNodeModulesPath, ...depParts));
+      }
+
+      // Also check if dependency is another local package in the monorepo
+      if (!isInstalled && workspacePackages.has(depName)) {
+        isInstalled = true;
+      }
 
       if (!isInstalled) {
         findings.push({
@@ -161,21 +202,26 @@ const dependenciesRule = {
       }
     }
 
-    // 5. Unused Dependency Candidates (declared in dependencies, but not referenced in source files)
+    // 5. Unused Dependency Candidates (only declared in production dependencies, strictly excluding devDependencies)
     const prodDepNames = Object.keys(declaredDeps).filter(name => {
       return !name.startsWith('@types/');
     });
 
     if (prodDepNames.length > 0) {
       const sourceFiles = await walkFiles(projectRoot, {
-        extensions: new Set(['.js', '.cjs', '.mjs', '.jsx', '.ts', '.tsx'])
+        extensions: new Set(['.js', '.cjs', '.mjs', '.jsx', '.ts', '.tsx']),
+        fileCache
       });
 
       const referencedPackages = new Set();
+      const allDynamicPrefixes = new Set();
+      let hasGlobalUnknownDynamic = false;
 
       for (const file of sourceFiles) {
         try {
           const content = await fsp.readFile(file, 'utf8');
+
+          // Static specifier extraction
           const specifiers = extractImportSpecifiers(content);
           for (const specifier of specifiers) {
             const pkgName = getPackageNameFromSpecifier(specifier);
@@ -183,24 +229,58 @@ const dependenciesRule = {
               referencedPackages.add(pkgName);
             }
           }
+
+          // Dynamic import analysis
+          const dynamicAnalysis = analyzeDynamicImports(content);
+          if (dynamicAnalysis.hasUnknownDynamic) {
+            hasGlobalUnknownDynamic = true;
+          }
+          for (const prefix of dynamicAnalysis.packagePrefixes) {
+            allDynamicPrefixes.add(prefix);
+          }
         } catch {
           // Ignore read errors for individual files
         }
       }
 
+      const scripts = pkg.scripts || {};
+
       for (const depName of prodDepNames) {
-        if (!referencedPackages.has(depName)) {
-          findings.push({
-            id: 'DEP005',
-            category: 'dependencies',
-            severity: 'info',
-            title: 'Unused dependency candidate',
-            message: `Dependency "${depName}" is declared in package.json but does not appear to be directly imported in scanned source files. Note: dynamically loaded dependencies or plugin packages may not be detected.`,
-            file: 'package.json',
-            recommendation: `Verify if "${depName}" is still required by the project. If unused, remove it with "npm uninstall ${depName}".`,
-            fixable: false
-          });
+        // Skip if directly referenced in source code
+        if (referencedPackages.has(depName)) {
+          continue;
         }
+
+        // Skip if referenced in npm scripts
+        if (isPackageReferencedInScripts(scripts, depName)) {
+          continue;
+        }
+
+        // In monorepos, skip if this dependency matches a workspace package
+        if (workspacePackages.has(depName)) {
+          continue;
+        }
+
+        // If matched by a dynamic package prefix (e.g. require('plugin-' + x) matches 'plugin-alpha')
+        if (isPackageReferencedDynamically(depName, allDynamicPrefixes)) {
+          continue;
+        }
+
+        // If unknown computed dynamic imports exist (e.g. require(variable)), conservatively skip
+        if (hasGlobalUnknownDynamic) {
+          continue;
+        }
+
+        findings.push({
+          id: 'DEP005',
+          category: 'dependencies',
+          severity: 'info',
+          title: 'Unused dependency candidate',
+          message: `Dependency "${depName}" is declared in package.json but does not appear to be directly imported in scanned source files. Note: dynamically loaded dependencies or plugin packages may not be detected.`,
+          file: 'package.json',
+          recommendation: `Verify if "${depName}" is still required by the project. If unused, remove it with "npm uninstall ${depName}".`,
+          fixable: false
+        });
       }
     }
 

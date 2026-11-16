@@ -4,6 +4,7 @@ const path = require('node:path');
 const fsp = require('node:fs').promises;
 const {
   exists,
+  toPosixPath,
   walkFiles,
   getGitTrackedFiles,
   parseEnvKeys,
@@ -28,15 +29,17 @@ const environmentRule = {
    *
    * @param {Object} context
    * @param {string} context.projectRoot
+   * @param {Map<string, string[]>} [context.fileCache]
    * @returns {Promise<Array<Object>>}
    */
   async run(context = {}) {
-    const { projectRoot } = context;
+    const { projectRoot, fileCache } = context;
     const findings = [];
 
     // 1. Locate source files and extract process.env references
     const sourceFiles = await walkFiles(projectRoot, {
-      extensions: new Set(['.js', '.cjs', '.mjs', '.jsx', '.ts', '.tsx'])
+      extensions: new Set(['.js', '.cjs', '.mjs', '.jsx', '.ts', '.tsx']),
+      fileCache
     });
 
     const envRefsMap = await extractEnvReferences(sourceFiles, projectRoot);
@@ -99,24 +102,25 @@ const environmentRule = {
         }
       }
 
-      // Identify unused template variables (present in template, absent from code)
-      for (const varName of documentedKeys) {
-        if (!referencedVarNames.has(varName) && varName !== 'NODE_ENV') {
+      // Identify stale documented variables (present in template, but never referenced)
+      // Only flag if at least one file was scanned and references exist
+      for (const docKey of documentedKeys) {
+        if (!referencedVarNames.has(docKey) && referencedVarNames.size > 0) {
           findings.push({
             id: 'ENV003',
             category: 'environment',
             severity: 'info',
-            title: 'Unused template environment variable',
-            message: `Environment variable "${varName}" is defined in ${exampleFileName} but does not appear to be referenced in project source files.`,
+            title: 'Unreferenced environment variable',
+            message: `Variable "${docKey}" is documented in ${exampleFileName} but does not appear to be referenced in project source files.`,
             file: exampleFileName,
-            recommendation: `Verify if "${varName}" is still needed in ${exampleFileName}, or remove it if obsolete.`,
+            recommendation: `Verify if "${docKey}" is still required by the project or if it can be removed.`,
             fixable: false
           });
         }
       }
     }
 
-    // C. Environment file handling (detect sensitive .env files tracked by Git)
+    // C. Sensitive environment files tracked in Git
     // Safe handling: Never read or expose environment variable values.
     const trackedFiles = getGitTrackedFiles(projectRoot);
     if (trackedFiles) {
@@ -137,7 +141,7 @@ const environmentRule = {
             severity: 'error',
             title: 'Tracked environment file in Git',
             message: `Environment configuration file "${relFile}" is tracked by Git. This risks exposing sensitive local settings.`,
-            file: relFile,
+            file: toPosixPath(relFile),
             recommendation: `Remove "${relFile}" from Git tracking using "git rm --cached ${relFile}" and add it to .gitignore.`,
             fixable: false
           });

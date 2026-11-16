@@ -3,6 +3,7 @@
 const path = require('node:path');
 const fsp = require('node:fs').promises;
 const {
+  toPosixPath,
   walkFiles,
   getGitTrackedFiles
 } = require('../utils/fs');
@@ -90,10 +91,11 @@ const securityRule = {
    *
    * @param {Object} context
    * @param {string} context.projectRoot
+   * @param {Map<string, string[]>} [context.fileCache]
    * @returns {Promise<Array<Object>>}
    */
   async run(context = {}) {
-    const { projectRoot } = context;
+    const { projectRoot, fileCache } = context;
     const findings = [];
 
     const trackedFiles = getGitTrackedFiles(projectRoot);
@@ -118,7 +120,7 @@ const securityRule = {
             severity: 'error',
             title: 'Sensitive environment file tracked in Git',
             message: `File "${relFile}" appears to be a sensitive environment file tracked in version control.`,
-            file: relFile,
+            file: toPosixPath(relFile),
             recommendation: `Untrack "${relFile}" using "git rm --cached ${relFile}" and add it to .gitignore.`,
             fixable: false
           });
@@ -137,7 +139,7 @@ const securityRule = {
               severity: 'error',
               title: 'Sensitive credential or key file tracked in Git',
               message: `File "${relFile}" matches sensitive key or credential patterns and is tracked in Git.`,
-              file: relFile,
+              file: toPosixPath(relFile),
               recommendation: `Remove "${relFile}" from Git immediately and rotate any credentials it contains.`,
               fixable: false
             });
@@ -150,11 +152,12 @@ const securityRule = {
     // B: Potential hardcoded secret exposure in source files
     // Scan project files across the project (including test/fixture files), ignoring node_modules, dist, etc.
     const sourceFiles = await walkFiles(projectRoot, {
-      extensions: new Set(['.js', '.cjs', '.mjs', '.jsx', '.ts', '.tsx', '.json', '.yaml', '.yml'])
+      extensions: new Set(['.js', '.cjs', '.mjs', '.jsx', '.ts', '.tsx', '.json', '.yaml', '.yml']),
+      fileCache
     });
 
     for (const filePath of sourceFiles) {
-      const relPath = path.relative(projectRoot, filePath);
+      const relPath = toPosixPath(path.relative(projectRoot, filePath));
 
       let content;
       try {

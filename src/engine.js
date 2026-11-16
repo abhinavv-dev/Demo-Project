@@ -84,10 +84,14 @@ async function inspectProject(projectPath, options = {}) {
   const categoriesFilter = options.categories ? new Set(options.categories) : null;
   const excludeFilter = options.excludeCategories ? new Set(options.excludeCategories) : null;
 
+  // Single-run memoization cache for walkFiles (strictly per inspection, no cross-inspection leakage)
+  const fileCache = new Map();
+
   const context = {
     projectRoot: resolvedPath,
     options: options.ruleOptions || {},
-    config
+    config,
+    fileCache
   };
 
   const rawFindings = [];

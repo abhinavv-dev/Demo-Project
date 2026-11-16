@@ -8,10 +8,11 @@ Ranger scans your project to identify configuration problems, dependency issues,
 
 - **Health Scoring & Letter Grades**: Deterministic 0–100 score and letter grade based on detected issues.
 - **Project Configuration (`ranger.config.json`)**: Disable individual rules, override severities, exclude files or folders via glob patterns, and customize scoring penalties and grade thresholds.
-- **Dependencies**: Detects missing installed packages, empty/invalid versions, missing lockfiles (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`), and unreferenced dependency candidates.
+- **Dependencies**: Detects missing installed packages, empty/invalid versions, missing lockfiles (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`), and unreferenced dependency candidates. Automatically handles monorepo workspaces (npm/yarn/pnpm), hoisted root dependencies, scoped packages, and subpath imports.
 - **Environment**: Verifies `.env.example` existence, highlights undocumented variables used in source code, flags unused template entries, and alerts if `.env` files are tracked in Git.
 - **Security**: Detects tracked private keys (`.pem`, `.key`, `id_rsa`) and credential files in Git, and flags potential hardcoded secrets (such as AWS keys and private key headers) without ever leaking secret values.
 - **Configuration**: Validates `package.json` syntax, required metadata (`name`, `version`), `scripts` structure, `engines.node` runtime compatibility, and verifies that configured `main` and `bin` entry points actually exist on disk.
+- **Reliability & Monorepo Intelligence**: Built-in module filtering prevents false alarms on Node.js built-ins (`fs`, `node:test`, `path`), circular and broken symlinks are handled gracefully, path normalization ensures cross-platform consistency (Windows/macOS/Linux), and dynamic imports are treated conservatively.
 
 ---
 
@@ -277,9 +278,10 @@ runCheck();
 
 ---
 
-## Current Limitations
+## Current Limitations & Notes
 
-- **Dynamic Imports**: Dependencies loaded via computed string expressions (e.g., `require('prefix-' + name)`) cannot be statically matched and are reported as informational unused candidates (`DEP005`).
+- **Dynamic Imports**: Dependencies loaded via computed string expressions (e.g., `require('prefix-' + name)` or `import(dynamicPath)`) cannot be statically matched. To avoid false alarms, Ranger conservatively suppresses unused dependency candidate warnings (`DEP005`) when dynamic loading expressions are detected.
+- **Monorepos & Workspaces**: In monorepo setups (`workspaces` in root `package.json`), dependencies hoisted to the root `node_modules` or declared by sibling workspace packages are recognized automatically.
 - **Git Metadata Dependency**: Git-dependent checks (`SEC001`, `SEC002`, `ENV004`) require repository metadata and the `git` CLI; if Git is unavailable or the directory is not a repository, these checks are skipped gracefully without failing the inspection.
 
 ---

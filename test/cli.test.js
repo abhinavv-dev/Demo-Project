@@ -1154,3 +1154,316 @@ test('Step 4 Health Scoring & Configuration Engine', async (t) => {
     assert.equal(ranger.isKnownRule('INVALID_ID'), false);
   });
 });
+
+test('Step 5 Reliability & Diagnostic Intelligence', async (t) => {
+  const cliPath = path.resolve(__dirname, '../src/cli.js');
+  const {
+    isNodeBuiltin,
+    stripComments,
+    extractImportSpecifiers,
+    hasDynamicImports,
+    getPackageNameFromSpecifier,
+    toPosixPath,
+    walkFiles
+  } = require('../src/utils/fs');
+
+  await t.test('1. Built-in module import filtering prevents false positive missing/unused deps', async () => {
+    assert.equal(isNodeBuiltin('fs'), true);
+    assert.equal(isNodeBuiltin('node:fs'), true);
+    assert.equal(isNodeBuiltin('path'), true);
+    assert.equal(isNodeBuiltin('node:test'), true);
+    assert.equal(isNodeBuiltin('node:child_process'), true);
+    assert.equal(isNodeBuiltin('lodash'), false);
+
+    assert.equal(getPackageNameFromSpecifier('fs'), null);
+    assert.equal(getPackageNameFromSpecifier('node:fs'), null);
+    assert.equal(getPackageNameFromSpecifier('fs/promises'), null);
+    assert.equal(getPackageNameFromSpecifier('node:test'), null);
+    assert.equal(getPackageNameFromSpecifier('path'), null);
+    assert.equal(getPackageNameFromSpecifier('lodash'), 'lodash');
+    assert.equal(getPackageNameFromSpecifier('lodash/fp'), 'lodash');
+    assert.equal(getPackageNameFromSpecifier('@scope/pkg/subpath'), '@scope/pkg');
+  });
+
+  await t.test('2. Scoped packages and subpath imports resolve correctly', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({
+        name: 'scoped-subpath-test',
+        version: '1.0.0',
+        dependencies: {
+          '@org/tool': '^1.0.0',
+          'my-lib': '^2.0.0'
+        }
+      }),
+      'package-lock.json': JSON.stringify({ name: 'scoped-subpath-test', lockfileVersion: 3 }),
+      'node_modules/@org/tool/package.json': JSON.stringify({ name: '@org/tool', version: '1.0.0' }),
+      'node_modules/my-lib/package.json': JSON.stringify({ name: 'my-lib', version: '2.0.0' }),
+      'index.js': `
+        const tool = require('@org/tool/dist/runner');
+        import { helper } from 'my-lib/helpers/utils';
+        console.log(tool, helper);
+      `
+    });
+
+    try {
+      const result = await ranger.inspectProject(dir);
+      const depErrors = result.findings.filter(f => f.category === 'dependencies');
+      assert.equal(depErrors.length, 0, 'Scoped packages with subpaths should not produce dependency errors or unused candidates');
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('3. Dynamic imports suppress only matching or indeterminable dependencies', async () => {
+    // Case A: Package prefix dynamic import e.g. import(`plugin-${name}`)
+    // Should suppress 'plugin-alpha' but NOT unrelated 'unrelated-lib'
+    const dirPrefix = await createTempProject({
+      'package.json': JSON.stringify({
+        name: 'dynamic-prefix-test',
+        version: '1.0.0',
+        dependencies: {
+          'plugin-alpha': '^1.0.0',
+          'unrelated-lib': '^1.0.0'
+        }
+      }),
+      'package-lock.json': JSON.stringify({ name: 'dynamic-prefix-test', lockfileVersion: 3 }),
+      'node_modules/plugin-alpha/package.json': JSON.stringify({ name: 'plugin-alpha', version: '1.0.0' }),
+      'node_modules/unrelated-lib/package.json': JSON.stringify({ name: 'unrelated-lib', version: '1.0.0' }),
+      'index.js': `
+        async function loadPlugin(name) {
+          return await import('plugin-' + name);
+        }
+        loadPlugin('alpha');
+      `
+    });
+
+    try {
+      const result = await ranger.inspectProject(dirPrefix);
+      const unusedFindings = result.findings.filter(f => f.id === 'DEP005');
+      assert.equal(unusedFindings.length, 1, 'Only unrelated-lib should be flagged as unused candidate');
+      assert.ok(unusedFindings[0].message.includes('unrelated-lib'), 'Unrelated lib must still be flagged');
+    } finally {
+      await cleanupTempProject(dirPrefix);
+    }
+
+    // Case B: Completely dynamic import e.g. require(variable)
+    // Conservatively suppresses all unused candidate findings because variable can be anything
+    const dirUnknown = await createTempProject({
+      'package.json': JSON.stringify({
+        name: 'dynamic-unknown-test',
+        version: '1.0.0',
+        dependencies: {
+          'any-lib': '^1.0.0'
+        }
+      }),
+      'package-lock.json': JSON.stringify({ name: 'dynamic-unknown-test', lockfileVersion: 3 }),
+      'node_modules/any-lib/package.json': JSON.stringify({ name: 'any-lib', version: '1.0.0' }),
+      'index.js': `
+        function loadDynamic(mod) {
+          return require(mod);
+        }
+        loadDynamic('any-lib');
+      `
+    });
+
+    try {
+      const result = await ranger.inspectProject(dirUnknown);
+      const unusedFindings = result.findings.filter(f => f.id === 'DEP005');
+      assert.equal(unusedFindings.length, 0, 'Computed unknown dynamic require should conservatively suppress unused warning');
+    } finally {
+      await cleanupTempProject(dirUnknown);
+    }
+  });
+
+  await t.test('4. Packages referenced in npm scripts are not marked as unused dependencies', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({
+        name: 'scripts-dep-test',
+        version: '1.0.0',
+        scripts: {
+          clean: 'rimraf dist',
+          start: 'node server.js'
+        },
+        dependencies: {
+          'rimraf': '^5.0.0'
+        }
+      }),
+      'package-lock.json': JSON.stringify({ name: 'scripts-dep-test', lockfileVersion: 3 }),
+      'node_modules/rimraf/package.json': JSON.stringify({ name: 'rimraf', version: '5.0.0' }),
+      'server.js': 'console.log("running");'
+    });
+
+    try {
+      const result = await ranger.inspectProject(dir);
+      const unusedFindings = result.findings.filter(f => f.id === 'DEP005');
+      assert.equal(unusedFindings.length, 0, 'CLI packages invoked in package.json scripts should not be flagged as unused');
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('5. Monorepo workspace package resolves hoisted root dependencies and lockfile', async () => {
+    const rootDir = await createTempProject({
+      'package.json': JSON.stringify({
+        name: 'monorepo-root',
+        version: '1.0.0',
+        workspaces: ['packages/*']
+      }),
+      'package-lock.json': JSON.stringify({ name: 'monorepo-root', lockfileVersion: 3 }),
+      'node_modules/shared-util/package.json': JSON.stringify({ name: 'shared-util', version: '1.0.0' }),
+      'packages/child-pkg/package.json': JSON.stringify({
+        name: 'child-pkg',
+        version: '1.0.0',
+        dependencies: {
+          'shared-util': '^1.0.0'
+        }
+      }),
+      'packages/child-pkg/index.js': 'const su = require("shared-util"); console.log(su);'
+    });
+
+    try {
+      const childDir = path.join(rootDir, 'packages', 'child-pkg');
+      const result = await ranger.inspectProject(childDir);
+      const dep004 = result.findings.find(f => f.id === 'DEP004');
+      const dep003 = result.findings.find(f => f.id === 'DEP003');
+      assert.equal(dep004, undefined, 'Hoisted dependency in monorepo root node_modules must be detected');
+      assert.equal(dep003, undefined, 'Monorepo root lockfile must be detected for workspace packages');
+    } finally {
+      await cleanupTempProject(rootDir);
+    }
+  });
+
+  await t.test('6. Monorepo sibling workspace dependencies are recognized', async () => {
+    const rootDir = await createTempProject({
+      'package.json': JSON.stringify({
+        name: 'monorepo-siblings',
+        version: '1.0.0',
+        workspaces: ['packages/*']
+      }),
+      'package-lock.json': JSON.stringify({ name: 'monorepo-siblings', lockfileVersion: 3 }),
+      'packages/core/package.json': JSON.stringify({
+        name: '@org/core',
+        version: '1.0.0'
+      }),
+      'packages/core/index.js': 'module.exports = { version: "1.0.0" };',
+      'packages/app/package.json': JSON.stringify({
+        name: '@org/app',
+        version: '1.0.0',
+        dependencies: {
+          '@org/core': '^1.0.0'
+        }
+      }),
+      'packages/app/index.js': 'const core = require("@org/core"); console.log(core);'
+    });
+
+    try {
+      const appDir = path.join(rootDir, 'packages', 'app');
+      const result = await ranger.inspectProject(appDir);
+      const depErrors = result.findings.filter(f => f.category === 'dependencies');
+      assert.equal(depErrors.length, 0, 'Sibling workspace package must not be flagged as missing dependency');
+    } finally {
+      await cleanupTempProject(rootDir);
+    }
+  });
+
+  await t.test('7. Filesystem resilience against broken and circular symlinks', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'symlink-test', version: '1.0.0' }),
+      'src/file.js': 'console.log("ok");'
+    });
+
+    try {
+      // Create broken symlink
+      try {
+        fs.symlinkSync(path.join(dir, 'non-existent-target'), path.join(dir, 'src', 'broken-link'));
+      } catch {
+        // Platform might not permit symlinks without admin rights
+      }
+
+      // Create circular symlink if possible
+      try {
+        fs.symlinkSync(path.join(dir, 'src'), path.join(dir, 'src', 'loop-link'));
+      } catch {
+        // Skip if symlinks not supported
+      }
+
+      const files = await walkFiles(dir);
+      assert.ok(Array.isArray(files));
+      assert.ok(files.some(f => f.endsWith('file.js')));
+
+      const result = await ranger.inspectProject(dir);
+      assert.ok(result.summary);
+      assert.ok(typeof result.score.value === 'number');
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('8. Filesystem resilience against permission errors', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'perms-test', version: '1.0.0' }),
+      'restricted/hidden.js': 'console.log("secret");'
+    });
+
+    try {
+      const restrictedDir = path.join(dir, 'restricted');
+      try {
+        fs.chmodSync(restrictedDir, 0o000);
+      } catch {
+        // Skip if chmod not supported
+      }
+
+      const result = await ranger.inspectProject(dir);
+      assert.ok(result);
+      assert.ok(typeof result.score.value === 'number');
+    } finally {
+      try {
+        fs.chmodSync(path.join(dir, 'restricted'), 0o755);
+      } catch {}
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('9. Path normalization consistency (POSIX slashes in findings and exclusions)', async () => {
+    assert.equal(toPosixPath('src\\rules\\test.js'), 'src/rules/test.js');
+    assert.equal(toPosixPath('src/rules/test.js'), 'src/rules/test.js');
+
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'norm-test', version: '1.0.0' }),
+      'ranger.config.json': JSON.stringify({
+        exclude: ['nested/**']
+      }),
+      'nested/sub/secret.js': 'const awsKey = "AKIA1234567890ABCDEF";'
+    });
+
+    try {
+      const result = await ranger.inspectProject(dir);
+      const secFindings = result.findings.filter(f => f.id === 'SEC003');
+      assert.equal(secFindings.length, 0, 'Excluded path with forward slashes must match even when traversed on Windows');
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('10. In-run file walk caching does not leak across separate inspection runs', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'cache-isolation-test', version: '1.0.0' }),
+      'index.js': 'console.log("v1");'
+    });
+
+    try {
+      const res1 = await ranger.inspectProject(dir);
+      assert.ok(res1);
+
+      // Mutate project directory by adding a new file
+      await fsp.writeFile(path.join(dir, 'new-file.js'), 'process.env.NEW_KEY = 1;');
+      const res2 = await ranger.inspectProject(dir);
+
+      // Verify that res2 performed a fresh scan and did not reuse res1 cached files
+      const envFinding = res2.findings.find(f => f.id === 'ENV001');
+      assert.ok(envFinding, 'Second run should detect the newly added environment variable');
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+});
