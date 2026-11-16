@@ -1,0 +1,27 @@
+{
+  "name": "ranger",
+  "version": "0.1.0",
+  "description": "A lightweight health inspector for JavaScript projects",
+  "main": "src/index.js",
+  "bin": {
+    "ranger": "src/cli.js"
+  },
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "ranger",
+    "health-check",
+    "inspector",
+    "diagnostics",
+    "linter",
+    "nodejs",
+    "cli"
+  ],
+  "author": "",
+  "license": "MIT"
+}
