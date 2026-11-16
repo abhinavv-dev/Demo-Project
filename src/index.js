@@ -1,27 +1,14 @@
 'use strict';
 
-const dependenciesRule = require('./rules/dependencies');
-const environmentRule = require('./rules/environment');
-const securityRule = require('./rules/security');
-const configurationRule = require('./rules/configuration');
+const { inspectProject, rules } = require('./engine');
 
 /**
- * Registry of available diagnostic rules.
- */
-const rules = {
-  dependencies: dependenciesRule,
-  environment: environmentRule,
-  security: securityRule,
-  configuration: configurationRule
-};
-
-/**
- * Run ranger inspection on a target project directory.
+ * Backward-compatible run helper.
  *
- * @param {Object} [options={}] - Configuration options for the inspection.
- * @param {string} [options.cwd=process.cwd()] - Target project directory path.
- * @param {string[]} [options.rules] - Optional list of specific rule names to execute.
- * @returns {Promise<{status: string, version: string, projectRoot: string, rules: string[], message: string}>}
+ * @param {Object} [options={}]
+ * @param {string} [options.cwd=process.cwd()]
+ * @param {string[]} [options.rules]
+ * @returns {Promise<Object>}
  */
 async function run(options = {}) {
   const projectRoot = options.cwd !== undefined ? options.cwd : process.cwd();
@@ -30,16 +17,22 @@ async function run(options = {}) {
     throw new TypeError('Option "cwd" must be a non-empty string path.');
   }
 
+  const inspection = await inspectProject(projectRoot, {
+    categories: options.rules
+  });
+
   return {
-    status: 'ready',
+    status: 'completed',
     version: '0.1.0',
-    projectRoot,
+    projectRoot: inspection.project.path,
     rules: Object.keys(rules),
-    message: 'Ranger project foundation initialized.'
+    message: `Inspection completed with ${inspection.summary.errors} errors, ${inspection.summary.warnings} warnings, and ${inspection.summary.info} notices.`,
+    inspection
   };
 }
 
 module.exports = {
+  inspectProject,
   run,
   rules
 };
