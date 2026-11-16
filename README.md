@@ -528,7 +528,7 @@ git diff --check
 
 Contributions, bug reports, and suggestions are welcome!
 
-1. Fork the repository: [https://github.com/abhinavv-dev/ranger](https://github.com/abhinavv-dev/ranger).
+1. Fork the repository: [https://github.com/abhinavv-dev/radar](https://github.com/abhinavv-dev/radar).
 2. Create your feature branch (`git checkout -b feature/my-feature`).
 3. Ensure all tests pass (`npm test`) and maintain zero external dependencies.
 4. Open a pull request.

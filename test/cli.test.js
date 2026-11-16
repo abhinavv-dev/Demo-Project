@@ -1671,3 +1671,133 @@ test('Step 6 Developer Experience & Release Preparation', async (t) => {
     }
   });
 });
+
+test('Step 7 Final Production Readiness & Edge Case Verification', async (t) => {
+  const cliPath = path.resolve(__dirname, '../src/cli.js');
+  const { calculateHealthScore } = require('../src/scoring');
+
+  await t.test('1. Score boundaries: scores clamp accurately at 0 and 100 without floating point drift', () => {
+    // 0 findings -> 100
+    const perfect = calculateHealthScore([]);
+    assert.equal(perfect.value, 100);
+    assert.equal(perfect.grade, 'A');
+    assert.equal(perfect.penalties, 0);
+
+    // Massive errors -> clamp to 0, Grade F
+    const catastrophicFindings = Array.from({ length: 15 }, (_, i) => ({
+      id: `ERR${i}`,
+      category: 'dependencies',
+      severity: 'error'
+    }));
+    const zeroScore = calculateHealthScore(catastrophicFindings);
+    assert.equal(zeroScore.value, 0);
+    assert.equal(zeroScore.grade, 'F');
+    assert.equal(zeroScore.penalties, 300);
+  });
+
+  await t.test('2. Grade boundary precision with default and custom thresholds', () => {
+    // Grade A: 90-100
+    assert.equal(calculateHealthScore([{ id: 'W1', category: 'environment', severity: 'warning' }]).grade, 'A'); // 93
+    // Grade B: 80-89
+    const twoWarnings = calculateHealthScore([
+      { id: 'W1', category: 'environment', severity: 'warning' },
+      { id: 'W2', category: 'environment', severity: 'warning' }
+    ]); // 100 - 14 = 86
+    assert.equal(twoWarnings.value, 86);
+    assert.equal(twoWarnings.grade, 'B');
+
+    // Grade C: 70-79
+    const threeWarnings = calculateHealthScore([
+      { id: 'W1', category: 'environment', severity: 'warning' },
+      { id: 'W2', category: 'environment', severity: 'warning' },
+      { id: 'W3', category: 'environment', severity: 'warning' }
+    ]); // 100 - 21 = 79
+    assert.equal(threeWarnings.value, 79);
+    assert.equal(threeWarnings.grade, 'C');
+
+    // Grade D: 60-69
+    const twoErrors = calculateHealthScore([
+      { id: 'E1', category: 'dependencies', severity: 'error' },
+      { id: 'E2', category: 'dependencies', severity: 'error' }
+    ]); // 100 - 40 = 60
+    assert.equal(twoErrors.value, 60);
+    assert.equal(twoErrors.grade, 'D');
+
+    // Grade F: < 60
+    const twoErrorsOneWarn = calculateHealthScore([
+      { id: 'E1', category: 'dependencies', severity: 'error' },
+      { id: 'E2', category: 'dependencies', severity: 'error' },
+      { id: 'W1', category: 'environment', severity: 'warning' }
+    ]); // 100 - 47 = 53
+    assert.equal(twoErrorsOneWarn.value, 53);
+    assert.equal(twoErrorsOneWarn.grade, 'F');
+  });
+
+  await t.test('3. Scoped imports and node: built-ins handle exotic subpath resolutions', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({
+        name: 'scoped-subpath-test',
+        version: '1.0.0',
+        dependencies: {
+          '@scope/my-lib': '^1.0.0'
+        }
+      }),
+      'node_modules/@scope/my-lib/package.json': JSON.stringify({
+        name: '@scope/my-lib',
+        version: '1.0.0'
+      }),
+      'package-lock.json': JSON.stringify({ name: 'scoped-subpath-test', lockfileVersion: 3 }),
+      '.env.example': 'FOO=1\n',
+      'index.js': `
+        const sub = require('@scope/my-lib/subpath/module');
+        const fs = require('node:fs/promises');
+        const test = require('node:test');
+        console.log(sub, fs, test);
+      `
+    });
+
+    try {
+      const res = await inspectProject(dir);
+      assert.equal(res.summary.errors, 0);
+      const dep005 = res.findings.find(f => f.id === 'DEP005');
+      assert.equal(dep005, undefined, 'Scoped subpath import must resolve dependency as used');
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('4. Redacted secrets in source files never expose plaintext in findings or stdout', async () => {
+    const secretKey = 'AKIA' + 'J9X8W7V6U5T4S3R2';
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'secret-leak-test', version: '1.0.0' }),
+      'index.js': `const awsKey = "${secretKey}";`
+    });
+
+    try {
+      const res = spawnSync(process.execPath, [cliPath, dir, '--json'], { encoding: 'utf8' });
+      assert.ok(!res.stdout.includes(secretKey), 'Plaintext secret must never appear in CLI stdout');
+      const parsed = JSON.parse(res.stdout);
+      const sec003 = parsed.findings.find(f => f.id === 'SEC003');
+      assert.ok(sec003, 'SEC003 finding should be present');
+      assert.ok(!sec003.message.includes(secretKey), 'Finding message must not leak plaintext secret');
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('5. CLI --score mode output formatting and exit code compatibility', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'score-mode-test', version: '1.0.0' })
+    });
+
+    try {
+      const res = spawnSync(process.execPath, [cliPath, dir, '--score'], { encoding: 'utf8' });
+      assert.equal(res.status, 0);
+      assert.ok(res.stdout.includes('RADAR v0.3.0'), 'Output should contain RADAR v0.3.0 header');
+      assert.ok(res.stdout.includes('Health Score:'), 'Output should display Health Score');
+      assert.ok(res.stdout.includes('Breakdown:'), 'Output should display summary Breakdown');
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+});

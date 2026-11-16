@@ -17,8 +17,8 @@ Thank you for your interest in contributing to Radar! Radar is an open-source, z
 
 1. **Fork and Clone the Repository**:
    ```bash
-   git clone https://github.com/abhinavv-dev/ranger.git
-   cd ranger
+   git clone https://github.com/abhinavv-dev/radar.git
+   cd radar
    ```
 
 2. **Verify Environment**:
@@ -38,7 +38,7 @@ Thank you for your interest in contributing to Radar! Radar is an open-source, z
 ## 3. Project Directory Architecture
 
 ```text
-ranger/
+radar/
 ├── .github/
 │   └── workflows/
 │       └── ci.yml                 # Multi-OS & multi-version CI test matrix
@@ -169,7 +169,7 @@ npm pack --dry-run
 ## 8. Reporting Bugs
 
 If you discover a bug or security concern:
-- Open an issue at [https://github.com/abhinavv-dev/ranger/issues](https://github.com/abhinavv-dev/ranger/issues).
+- Open an issue at [https://github.com/abhinavv-dev/radar/issues](https://github.com/abhinavv-dev/radar/issues).
 - Provide Node.js version (`node -v`), operating system, and reproduction steps or sample project.
 - **Security Vulnerabilities**: Please report sensitive credential leaks or security concerns responsibly via private vulnerability reporting on GitHub.
 
