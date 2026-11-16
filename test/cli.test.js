@@ -39,7 +39,7 @@ async function cleanupTempProject(dir) {
 test('Package Configuration', async (t) => {
   await t.test('has correct package metadata', () => {
     assert.equal(pkg.name, 'ranger');
-    assert.equal(pkg.version, '0.2.0');
+    assert.equal(pkg.version, '0.3.0');
     assert.equal(pkg.description, 'A lightweight health inspector for JavaScript projects');
     assert.equal(pkg.license, 'MIT');
     assert.equal(pkg.type, 'commonjs');
@@ -75,7 +75,7 @@ test('Public API (src/index.js)', async (t) => {
   await t.test('run() returns backwards-compatible execution result', async () => {
     const result = await ranger.run();
     assert.equal(result.status, 'completed');
-    assert.equal(result.version, '0.2.0');
+    assert.equal(result.version, '0.3.0');
     assert.equal(typeof result.projectRoot, 'string');
     assert.deepEqual(result.rules, ['dependencies', 'environment', 'security', 'configuration']);
     assert.ok(result.inspection);
@@ -703,5 +703,454 @@ test('Step 3 CLI & JSON Presentation Features', async (t) => {
     } finally {
       await cleanupTempProject(dir);
     }
+  });
+});
+
+test('Step 4 Health Scoring & Configuration Engine', async (t) => {
+  const cliPath = path.resolve(__dirname, '../src/cli.js');
+  const { calculateHealthScore } = require('../src/scoring');
+  const { validateConfig, loadConfig } = require('../src/config');
+  const { listRules, getRule, isKnownRule } = require('../src/registry');
+
+  // Health scoring tests
+  await t.test('1. Perfect project gets score 100 and Grade A', () => {
+    const score = calculateHealthScore([]);
+    assert.equal(score.value, 100);
+    assert.equal(score.grade, 'A');
+    assert.equal(score.penalties, 0);
+  });
+
+  await t.test('2. Error penalties apply 20 points per error', () => {
+    const findings = [
+      { id: 'CFG001', category: 'configuration', severity: 'error' },
+      { id: 'DEP004', category: 'dependencies', severity: 'error' }
+    ];
+    const score = calculateHealthScore(findings);
+    assert.equal(score.penalties, 40);
+    assert.equal(score.value, 60);
+    assert.equal(score.grade, 'D');
+    assert.equal(score.categories.configuration, 20);
+    assert.equal(score.categories.dependencies, 20);
+  });
+
+  await t.test('3. Warning penalties apply 7 points per warning', () => {
+    const findings = [
+      { id: 'ENV001', category: 'environment', severity: 'warning' },
+      { id: 'DEP003', category: 'dependencies', severity: 'warning' }
+    ];
+    const score = calculateHealthScore(findings);
+    assert.equal(score.penalties, 14);
+    assert.equal(score.value, 86);
+    assert.equal(score.grade, 'B');
+    assert.equal(score.categories.environment, 7);
+    assert.equal(score.categories.dependencies, 7);
+  });
+
+  await t.test('4. Info findings do not reduce the default score', () => {
+    const findings = [
+      { id: 'CFG006', category: 'configuration', severity: 'info' },
+      { id: 'DEP005', category: 'dependencies', severity: 'info' }
+    ];
+    const score = calculateHealthScore(findings);
+    assert.equal(score.penalties, 0);
+    assert.equal(score.value, 100);
+    assert.equal(score.grade, 'A');
+  });
+
+  await t.test('5. Score never falls below zero', () => {
+    const findings = Array(10).fill({ id: 'CFG001', category: 'configuration', severity: 'error' });
+    const score = calculateHealthScore(findings);
+    assert.equal(score.penalties, 200);
+    assert.equal(score.value, 0);
+    assert.equal(score.grade, 'F');
+  });
+
+  await t.test('6. Grade thresholds work correctly', () => {
+    assert.equal(calculateHealthScore([]).grade, 'A'); // 100 -> A
+    assert.equal(calculateHealthScore([{ severity: 'warning', category: 'env' }]).grade, 'A'); // 100 - 7 = 93 -> A (90-100)
+    // 2 warnings = 14 penalties -> 86 (B: 80-89)
+    assert.equal(calculateHealthScore([{ severity: 'warning', category: 'env' }, { severity: 'warning', category: 'env' }]).grade, 'B');
+    // 1 error + 1 warning = 27 penalties -> 73 (C: 70-79)
+    assert.equal(calculateHealthScore([{ severity: 'error', category: 'env' }, { severity: 'warning', category: 'env' }]).grade, 'C');
+    // 2 errors = 40 penalties -> 60 (D: 60-69)
+    assert.equal(calculateHealthScore([{ severity: 'error', category: 'env' }, { severity: 'error', category: 'env' }]).grade, 'D');
+    // 3 errors = 60 penalties -> 40 (F: 0-59)
+    assert.equal(calculateHealthScore(Array(3).fill({ severity: 'error', category: 'env' })).grade, 'F');
+  });
+
+  await t.test('7. Custom scoring weights work', () => {
+    const customConfig = {
+      weights: { error: 50, warning: 10, info: 5 }
+    };
+    const findings = [
+      { severity: 'error', category: 'env' },
+      { severity: 'warning', category: 'env' },
+      { severity: 'info', category: 'env' }
+    ];
+    const score = calculateHealthScore(findings, customConfig);
+    assert.equal(score.penalties, 65);
+    assert.equal(score.value, 35);
+    assert.equal(score.grade, 'F');
+  });
+
+  await t.test('8. Custom grade thresholds work', () => {
+    const customConfig = {
+      grades: { A: 95, B: 85, C: 75, D: 65 }
+    };
+    // 1 warning = 93 points -> below 95, so Grade B
+    const score = calculateHealthScore([{ severity: 'warning', category: 'env' }], customConfig);
+    assert.equal(score.value, 93);
+    assert.equal(score.grade, 'B');
+  });
+
+  await t.test('9. Repeated scans produce deterministic scores', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'deterministic-scoring', version: '1.0.0' }),
+      'index.js': 'console.log(process.env.TEST_KEY);'
+    });
+
+    try {
+      const res1 = await inspectProject(dir);
+      const res2 = await inspectProject(dir);
+      assert.equal(res1.score.value, res2.score.value);
+      assert.equal(res1.score.grade, res2.score.grade);
+      assert.equal(res1.score.penalties, res2.score.penalties);
+      assert.deepEqual(res1.score.categories, res2.score.categories);
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  // Configuration tests
+  await t.test('10. Automatic configuration discovery (ranger.config.json)', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'auto-config', version: '1.0.0' }),
+      'ranger.config.json': JSON.stringify({
+        rules: {
+          disabled: ['CFG006']
+        }
+      })
+    });
+
+    try {
+      const res = await inspectProject(dir);
+      assert.ok(res.configPath.includes('ranger.config.json'));
+      const cfgFinding = res.findings.find(f => f.id === 'CFG006');
+      assert.equal(cfgFinding, undefined, 'CFG006 should be disabled by auto-discovered config');
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('11. Explicit configuration path via options and CLI', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'explicit-config', version: '1.0.0' }),
+      'custom-rules.json': JSON.stringify({
+        rules: {
+          disabled: ['CFG006']
+        }
+      })
+    });
+
+    try {
+      const res = await inspectProject(dir, {
+        configPath: path.join(dir, 'custom-rules.json')
+      });
+      assert.equal(res.findings.find(f => f.id === 'CFG006'), undefined);
+
+      const cliRes = spawnSync(process.execPath, [
+        cliPath,
+        dir,
+        '--config',
+        path.join(dir, 'custom-rules.json'),
+        '--json'
+      ], { encoding: 'utf8' });
+      assert.equal(cliRes.status, 0);
+      const parsed = JSON.parse(cliRes.stdout);
+      assert.equal(parsed.findings.find(f => f.id === 'CFG006'), undefined);
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('12. Disabled rules are not executed or included in findings', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({
+        name: 'disabled-rules-test',
+        version: '1.0.0',
+        dependencies: { 'missing-dep': '^1.0.0' }
+      }),
+      'ranger.config.json': JSON.stringify({
+        rules: {
+          disabled: ['DEP004', 'DEP003']
+        }
+      })
+    });
+
+    try {
+      const res = await inspectProject(dir);
+      assert.equal(res.findings.find(f => f.id === 'DEP004'), undefined);
+      assert.equal(res.findings.find(f => f.id === 'DEP003'), undefined);
+      // Score should not be penalized by disabled rules
+      assert.equal(res.score.penalties, 0);
+      assert.equal(res.score.value, 100);
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('13. Severity overrides change effective severity and penalties', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({
+        name: 'severity-override-test',
+        version: '1.0.0',
+        dependencies: { 'missing-dep': '^1.0.0' }
+      }),
+      'ranger.config.json': JSON.stringify({
+        rules: {
+          severity: {
+            'DEP004': 'info', // normally error (20 pts) -> overridden to info (0 pts)
+            'DEP003': 'error' // normally warning (7 pts) -> overridden to error (20 pts)
+          }
+        }
+      })
+    });
+
+    try {
+      const res = await inspectProject(dir);
+      const dep004 = res.findings.find(f => f.id === 'DEP004');
+      const dep003 = res.findings.find(f => f.id === 'DEP003');
+      assert.equal(dep004.severity, 'info');
+      assert.equal(dep003.severity, 'error');
+      // Total penalties: 0 (DEP004 info) + 20 (DEP003 error) = 20
+      assert.equal(res.score.penalties, 20);
+      assert.equal(res.score.value, 80);
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('14. Excluded directories are ignored from file-specific findings', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'exclude-dir-test', version: '1.0.0' }),
+      'legacy/broken.js': 'const x = process.env.LEGACY_VAR;',
+      'ranger.config.json': JSON.stringify({
+        exclude: ['legacy/**']
+      })
+    });
+
+    try {
+      const res = await inspectProject(dir);
+      const envFinding = res.findings.find(f => f.file && f.file.startsWith('legacy'));
+      assert.equal(envFinding, undefined, 'Findings in legacy/ directory must be excluded');
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('15. Excluded files are ignored', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'exclude-file-test', version: '1.0.0' }),
+      'scripts/secret.js': 'const key = "AKIA1234567890ABCDEF";',
+      'ranger.config.json': JSON.stringify({
+        exclude: ['scripts/secret.js']
+      })
+    });
+
+    try {
+      const res = await inspectProject(dir);
+      const secretFinding = res.findings.find(f => f.file === 'scripts/secret.js');
+      assert.equal(secretFinding, undefined, 'scripts/secret.js finding should be excluded');
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('16. Missing configuration uses defaults without crashing', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'missing-config-test', version: '1.0.0' })
+    });
+
+    try {
+      const res = await inspectProject(dir);
+      assert.equal(res.configPath, null);
+      assert.ok(res.score);
+      assert.equal(res.score.value, 100);
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('17. Malformed JSON in ranger.config.json rejects with clear error', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'broken-config-json', version: '1.0.0' }),
+      'ranger.config.json': '{ broken json syntax '
+    });
+
+    try {
+      await assert.rejects(
+        async () => {
+          await inspectProject(dir);
+        },
+        {
+          name: 'Error',
+          message: /Invalid JSON syntax in configuration file/
+        }
+      );
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('18. Invalid severity values in configuration are rejected', () => {
+    assert.throws(
+      () => {
+        validateConfig({
+          rules: {
+            severity: { 'ENV001': 'critical' }
+          }
+        });
+      },
+      {
+        name: 'Error',
+        message: /Invalid severity value "critical"/
+      }
+    );
+  });
+
+  await t.test('19. Unknown rule IDs in configuration are rejected', () => {
+    assert.throws(
+      () => {
+        validateConfig({
+          rules: {
+            disabled: ['FAKE_RULE_999']
+          }
+        });
+      },
+      {
+        name: 'Error',
+        message: /Unknown rule ID in "rules.disabled": "FAKE_RULE_999"/
+      }
+    );
+  });
+
+  await t.test('20. Invalid scoring weights are rejected', () => {
+    assert.throws(
+      () => {
+        validateConfig({
+          scoring: {
+            weights: { error: -10 }
+          }
+        });
+      },
+      {
+        name: 'Error',
+        message: /Scoring weight for "error" must be a non-negative number/
+      }
+    );
+  });
+
+  await t.test('21. Invalid grade thresholds are rejected', () => {
+    assert.throws(
+      () => {
+        validateConfig({
+          scoring: {
+            grades: { A: 50, B: 80, C: 70, D: 60 } // A < B is invalid
+          }
+        });
+      },
+      {
+        name: 'Error',
+        message: /Grade thresholds must strictly decrease in order/
+      }
+    );
+  });
+
+  await t.test('22. Invalid exclusion patterns are rejected', () => {
+    assert.throws(
+      () => {
+        validateConfig({
+          exclude: ['']
+        });
+      },
+      {
+        name: 'Error',
+        message: /Each pattern in "exclude" must be a non-empty string glob/
+      }
+    );
+  });
+
+  // CLI and Registry features
+  await t.test('23. --list-rules displays all registered rules and severities', () => {
+    const res = spawnSync(process.execPath, [cliPath, '--list-rules'], { encoding: 'utf8' });
+    assert.equal(res.status, 0);
+    assert.ok(res.stdout.includes('CFG001'));
+    assert.ok(res.stdout.includes('DEP004'));
+    assert.ok(res.stdout.includes('SEC003'));
+    assert.ok(res.stdout.includes('ENV001'));
+    assert.ok(res.stdout.includes('Total rules:'));
+  });
+
+  await t.test('24. --list-rules --json outputs machine-readable rules list', () => {
+    const res = spawnSync(process.execPath, [cliPath, '--list-rules', '--json'], { encoding: 'utf8' });
+    assert.equal(res.status, 0);
+    const parsed = JSON.parse(res.stdout);
+    assert.ok(Array.isArray(parsed.rules));
+    assert.ok(parsed.rules.length >= 21);
+    assert.ok(parsed.rules.find(r => r.id === 'CFG001'));
+  });
+
+  await t.test('25. --score displays concise score and breakdown', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'score-cli-test', version: '1.0.0' })
+    });
+
+    try {
+      const res = spawnSync(process.execPath, [cliPath, dir, '--score'], { encoding: 'utf8' });
+      assert.equal(res.status, 0);
+      assert.ok(res.stdout.includes('Health Score: 100/100 (Grade A)'));
+      assert.ok(res.stdout.includes('Breakdown:'));
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('26. JSON output includes scoring and grade object', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({
+        name: 'json-score-test',
+        version: '1.0.0',
+        dependencies: { 'missing-pkg': '^1.0.0' }
+      })
+    });
+
+    try {
+      const res = spawnSync(process.execPath, [cliPath, dir, '--json'], { encoding: 'utf8' });
+      assert.equal(res.status, 1); // 1 because of error
+      const parsed = JSON.parse(res.stdout);
+      assert.ok(parsed.score);
+      assert.equal(typeof parsed.score.value, 'number');
+      assert.equal(typeof parsed.score.grade, 'string');
+      assert.equal(typeof parsed.score.penalties, 'number');
+      assert.ok(parsed.score.categories);
+      assert.ok(parsed.score.categories.dependencies > 0);
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('27. Public API exports scoring, registry, and configuration helpers', () => {
+    assert.equal(typeof ranger.calculateHealthScore, 'function');
+    assert.equal(typeof ranger.validateConfig, 'function');
+    assert.equal(typeof ranger.loadConfig, 'function');
+    assert.equal(typeof ranger.listRules, 'function');
+    assert.equal(typeof ranger.getRule, 'function');
+    assert.equal(typeof ranger.isKnownRule, 'function');
+
+    const rules = ranger.listRules();
+    assert.ok(Array.isArray(rules));
+    assert.ok(rules.length >= 21);
+    assert.equal(ranger.isKnownRule('DEP004'), true);
+    assert.equal(ranger.isKnownRule('INVALID_ID'), false);
   });
 });

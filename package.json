@@ -1,6 +1,6 @@
 {
   "name": "ranger",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A lightweight health inspector for JavaScript projects",
   "main": "src/index.js",
   "bin": {
@@ -13,6 +13,10 @@
   "scripts": {
     "test": "node --test"
   },
+  "files": [
+    "src",
+    "README.md"
+  ],
   "keywords": [
     "ranger",
     "health-check",

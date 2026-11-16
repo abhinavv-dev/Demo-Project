@@ -12,6 +12,9 @@ const path = require('node:path');
  *   noColor: boolean,
  *   help: boolean,
  *   version: boolean,
+ *   listRules: boolean,
+ *   scoreOnly: boolean,
+ *   configPath: string|null,
  *   unknown: string[]
  * }}
  */
@@ -22,6 +25,9 @@ function parseArgs(argv = []) {
     noColor: false,
     help: false,
     version: false,
+    listRules: false,
+    scoreOnly: false,
+    configPath: null,
     unknown: []
   };
 
@@ -38,6 +44,19 @@ function parseArgs(argv = []) {
       result.json = true;
     } else if (arg === '--no-color') {
       result.noColor = true;
+    } else if (arg === '--list-rules') {
+      result.listRules = true;
+    } else if (arg === '--score') {
+      result.scoreOnly = true;
+    } else if (arg === '--config') {
+      if (i + 1 < argv.length && !argv[i + 1].startsWith('-')) {
+        result.configPath = argv[i + 1];
+        i++;
+      } else {
+        result.unknown.push(arg);
+      }
+    } else if (arg.startsWith('--config=')) {
+      result.configPath = arg.slice('--config='.length);
     } else if (arg.startsWith('-')) {
       result.unknown.push(arg);
     } else {
@@ -71,7 +90,10 @@ ARGUMENTS:
   [path]             Target project directory (defaults to current directory)
 
 OPTIONS:
-  --json             Output findings as machine-readable JSON
+  --config <path>    Explicit path to ranger.config.json
+  --json             Output findings and score as machine-readable JSON
+  --score            Display health score and summary in a concise format
+  --list-rules       List all available diagnostic rules and default severities
   --no-color         Disable terminal colors
   -h, --help         Display this help message
   -v, --version      Display the installed version
@@ -80,8 +102,10 @@ EXAMPLES:
   ranger
   ranger .
   ranger /path/to/project
+  ranger --score
+  ranger --list-rules
+  ranger --config ranger.config.json
   ranger --json
-  ranger /path/to/project --json
   ranger --no-color
 `;
 }

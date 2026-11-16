@@ -2,7 +2,9 @@
 
 const path = require('node:path');
 const fsp = require('node:fs').promises;
-const { exists, readJsonFile } = require('./utils/fs');
+const { readJsonFile } = require('./utils/fs');
+const { loadConfig, isFileExcluded } = require('./config');
+const { calculateHealthScore } = require('./scoring');
 
 const dependenciesRule = require('./rules/dependencies');
 const environmentRule = require('./rules/environment');
@@ -27,10 +29,12 @@ const SEVERITY_ORDER = {
  *
  * @param {string} projectPath - Path to the target project directory.
  * @param {Object} [options={}] - Inspection configuration options.
+ * @param {string} [options.configPath] - Explicit path to ranger.config.json.
+ * @param {Object} [options.config] - Pre-loaded or inline configuration object.
  * @param {string[]} [options.categories] - Array of categories to run (default: all).
  * @param {string[]} [options.excludeCategories] - Array of categories to skip.
  * @param {Object} [options.ruleOptions] - Custom configuration per rule.
- * @returns {Promise<Object>} Inspection results including summary and findings.
+ * @returns {Promise<Object>} Inspection results including summary, score, findings, and duration.
  */
 async function inspectProject(projectPath, options = {}) {
   const startTime = Date.now();
@@ -53,6 +57,18 @@ async function inspectProject(projectPath, options = {}) {
     throw new Error(`Project path is not a directory: "${resolvedPath}"`);
   }
 
+  // Load project configuration (explicit path, auto-discovered ranger.config.json, or default)
+  let config;
+  let loadedConfigPath = null;
+  if (options.config) {
+    const { validateConfig } = require('./config');
+    config = validateConfig(options.config);
+  } else {
+    const configResult = await loadConfig(resolvedPath, options.configPath);
+    config = configResult.config;
+    loadedConfigPath = configResult.configPath;
+  }
+
   // Derive project name from package.json if available, or directory name
   let projectName = path.basename(resolvedPath);
   try {
@@ -70,7 +86,8 @@ async function inspectProject(projectPath, options = {}) {
 
   const context = {
     projectRoot: resolvedPath,
-    options: options.ruleOptions || {}
+    options: options.ruleOptions || {},
+    config
   };
 
   const rawFindings = [];
@@ -103,8 +120,38 @@ async function inspectProject(projectPath, options = {}) {
     }
   }
 
+  // Filter and transform findings using project configuration
+  const disabledRuleIds = new Set(config.rules.disabled || []);
+  const severityOverrides = config.rules.severity || {};
+  const excludePatterns = config.exclude || [];
+
+  const processedFindings = [];
+
+  for (const finding of rawFindings) {
+    // 1. Check if rule is disabled
+    if (disabledRuleIds.has(finding.id)) {
+      continue;
+    }
+
+    // 2. Check if file is excluded by glob pattern
+    if (finding.file && isFileExcluded(finding.file, excludePatterns)) {
+      continue;
+    }
+
+    // 3. Apply severity overrides if configured
+    let effectiveSeverity = finding.severity;
+    if (severityOverrides[finding.id]) {
+      effectiveSeverity = severityOverrides[finding.id];
+    }
+
+    processedFindings.push({
+      ...finding,
+      severity: effectiveSeverity
+    });
+  }
+
   // Sort findings by severity: error -> warning -> info, then by category and id
-  rawFindings.sort((a, b) => {
+  processedFindings.sort((a, b) => {
     const orderA = SEVERITY_ORDER[a.severity] ?? 99;
     const orderB = SEVERITY_ORDER[b.severity] ?? 99;
     if (orderA !== orderB) {
@@ -118,11 +165,14 @@ async function inspectProject(projectPath, options = {}) {
 
   // Calculate summary counts
   const summary = {
-    total: rawFindings.length,
-    errors: rawFindings.filter(f => f.severity === 'error').length,
-    warnings: rawFindings.filter(f => f.severity === 'warning').length,
-    info: rawFindings.filter(f => f.severity === 'info').length
+    total: processedFindings.length,
+    errors: processedFindings.filter(f => f.severity === 'error').length,
+    warnings: processedFindings.filter(f => f.severity === 'warning').length,
+    info: processedFindings.filter(f => f.severity === 'info').length
   };
+
+  // Calculate health score using scoring configuration
+  const score = calculateHealthScore(processedFindings, config.scoring);
 
   const duration = Date.now() - startTime;
 
@@ -131,8 +181,10 @@ async function inspectProject(projectPath, options = {}) {
       name: projectName,
       path: resolvedPath
     },
+    configPath: loadedConfigPath,
     summary,
-    findings: rawFindings,
+    score,
+    findings: processedFindings,
     duration
   };
 }

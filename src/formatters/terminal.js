@@ -12,7 +12,7 @@ const { createColors } = require('./colors');
  */
 function formatTerminal(inspectionResult, version, enableColor = true) {
   const c = createColors(enableColor);
-  const { project, summary, findings, duration } = inspectionResult;
+  const { project, summary, score, findings, duration } = inspectionResult;
 
   const lines = [];
 
@@ -20,8 +20,27 @@ function formatTerminal(inspectionResult, version, enableColor = true) {
   lines.push('');
   lines.push(`${c.bold(c.cyan('RANGER'))} ${c.dim(`v${version}`)} ${c.dim('—')} ${c.bold('Project Health Inspector')}`);
   lines.push(c.dim('────────────────────────────────────────────────────────────'));
-  lines.push(`${c.dim('Project:')}   ${c.bold(project.name)}`);
-  lines.push(`${c.dim('Target:')}    ${project.path}`);
+  lines.push(`${c.dim('Project:')}      ${c.bold(project.name)}`);
+  lines.push(`${c.dim('Target:')}       ${project.path}`);
+
+  // Health Score Display
+  if (score) {
+    let gradeColor;
+    if (score.grade === 'A') {
+      gradeColor = c.green;
+    } else if (score.grade === 'B') {
+      gradeColor = c.cyan;
+    } else if (score.grade === 'C') {
+      gradeColor = c.yellow;
+    } else {
+      gradeColor = c.red;
+    }
+
+    const scoreTag = gradeColor(c.bold(`${score.value}/100`));
+    const gradeTag = gradeColor(c.bold(`Grade ${score.grade}`));
+    lines.push(`${c.dim('Health Score:')} ${scoreTag} ${c.dim('—')} ${gradeTag}`);
+  }
+
   lines.push('');
 
   // Findings Grouped by Severity
@@ -80,18 +99,94 @@ function formatTerminal(inspectionResult, version, enableColor = true) {
     parts.push(c.dim('0 notices'));
   }
 
-  const summaryLine = `${c.bold('Summary:')}  ${parts.join(c.dim('  •  '))} ${c.dim(`(scanned in ${duration}ms)`)}`;
+  const summaryLine = `${c.bold('Summary:')}     ${parts.join(c.dim('  •  '))} ${c.dim(`(scanned in ${duration}ms)`)}`;
   lines.push(summaryLine);
 
   if (summary.errors > 0) {
-    lines.push(`${c.bold('Status:')}   ${c.red(c.bold('Failed'))} ${c.dim('— critical issues require attention')}`);
+    lines.push(`${c.bold('Status:')}      ${c.red(c.bold('Failed'))} ${c.dim('— critical issues require attention')}`);
   } else if (summary.warnings > 0) {
-    lines.push(`${c.bold('Status:')}   ${c.yellow(c.bold('Passed with warnings'))} ${c.dim('— consider addressing suggested improvements')}`);
+    lines.push(`${c.bold('Status:')}      ${c.yellow(c.bold('Passed with warnings'))} ${c.dim('— consider addressing suggested improvements')}`);
   } else {
-    lines.push(`${c.bold('Status:')}   ${c.green(c.bold('Passed'))} ${c.dim('— all health checks satisfied')}`);
+    lines.push(`${c.bold('Status:')}      ${c.green(c.bold('Passed'))} ${c.dim('— all health checks satisfied')}`);
   }
 
   lines.push('');
+  return lines.join('\n');
+}
+
+/**
+ * Format concise score-only output.
+ *
+ * @param {Object} inspectionResult
+ * @param {string} version
+ * @param {boolean} [enableColor=true]
+ * @returns {string}
+ */
+function formatScoreOnly(inspectionResult, version, enableColor = true) {
+  const c = createColors(enableColor);
+  const { project, summary, score, duration } = inspectionResult;
+
+  let gradeColor;
+  if (score.grade === 'A') {
+    gradeColor = c.green;
+  } else if (score.grade === 'B') {
+    gradeColor = c.cyan;
+  } else if (score.grade === 'C') {
+    gradeColor = c.yellow;
+  } else {
+    gradeColor = c.red;
+  }
+
+  const lines = [
+    '',
+    `${c.bold(c.cyan('RANGER'))} ${c.dim(`v${version}`)} ${c.dim('—')} ${c.bold(project.name)}`,
+    `${c.dim('Health Score:')} ${gradeColor(c.bold(`${score.value}/100`))} ${c.dim('(')}${gradeColor(c.bold(`Grade ${score.grade}`))}${c.dim(')')}`,
+    `${c.dim('Breakdown:')}    ${summary.errors} errors, ${summary.warnings} warnings, ${summary.info} notices ${c.dim(`(${duration}ms)`)}`,
+    ''
+  ];
+
+  return lines.join('\n');
+}
+
+/**
+ * Format the list of available diagnostic rules into a clean terminal table.
+ *
+ * @param {Array<Object>} rules
+ * @param {boolean} [enableColor=true]
+ * @returns {string}
+ */
+function formatRulesList(rules, enableColor = true) {
+  const c = createColors(enableColor);
+  const lines = [
+    '',
+    `${c.bold(c.cyan('RANGER'))} ${c.dim('— Available Diagnostic Rules')}`,
+    c.dim('──────────────────────────────────────────────────────────────────────────'),
+    `${c.bold('ID'.padEnd(10))} ${c.bold('CATEGORY'.padEnd(16))} ${c.bold('DEFAULT'.padEnd(10))} ${c.bold('TITLE')}`,
+    c.dim('──────────────────────────────────────────────────────────────────────────')
+  ];
+
+  for (const r of rules) {
+    let sevColor = c.dim;
+    if (r.defaultSeverity === 'error') {
+      sevColor = c.red;
+    } else if (r.defaultSeverity === 'warning') {
+      sevColor = c.yellow;
+    } else if (r.defaultSeverity === 'info') {
+      sevColor = c.blue;
+    }
+
+    const idStr = c.bold(r.id.padEnd(10));
+    const catStr = c.dim(r.category.padEnd(16));
+    const sevStr = sevColor(r.defaultSeverity.padEnd(10));
+    const titleStr = r.title;
+
+    lines.push(`${idStr} ${catStr} ${sevStr} ${titleStr}`);
+  }
+
+  lines.push(c.dim('──────────────────────────────────────────────────────────────────────────'));
+  lines.push(`${c.dim(`Total rules:`)} ${rules.length}`);
+  lines.push('');
+
   return lines.join('\n');
 }
 
@@ -122,5 +217,7 @@ function renderFinding(lines, finding, c) {
 }
 
 module.exports = {
-  formatTerminal
+  formatTerminal,
+  formatScoreOnly,
+  formatRulesList
 };

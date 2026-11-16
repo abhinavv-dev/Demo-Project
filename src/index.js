@@ -2,6 +2,9 @@
 
 const pkg = require('../package.json');
 const { inspectProject, rules } = require('./engine');
+const { calculateHealthScore } = require('./scoring');
+const { validateConfig, loadConfig } = require('./config');
+const { listRules, getRule, isKnownRule } = require('./registry');
 
 /**
  * Backward-compatible run helper.
@@ -9,6 +12,7 @@ const { inspectProject, rules } = require('./engine');
  * @param {Object} [options={}]
  * @param {string} [options.cwd=process.cwd()]
  * @param {string[]} [options.rules]
+ * @param {string} [options.configPath]
  * @returns {Promise<Object>}
  */
 async function run(options = {}) {
@@ -19,7 +23,8 @@ async function run(options = {}) {
   }
 
   const inspection = await inspectProject(projectRoot, {
-    categories: options.rules
+    categories: options.rules,
+    configPath: options.configPath
   });
 
   return {
@@ -35,5 +40,11 @@ async function run(options = {}) {
 module.exports = {
   inspectProject,
   run,
-  rules
+  rules,
+  calculateHealthScore,
+  validateConfig,
+  loadConfig,
+  listRules,
+  getRule,
+  isKnownRule
 };

@@ -4,9 +4,10 @@
 
 const pkg = require('../package.json');
 const { inspectProject } = require('./engine');
+const { listRules } = require('./registry');
 const { parseArgs, getHelpText } = require('./formatters/args');
 const { shouldEnableColor } = require('./formatters/colors');
-const { formatTerminal } = require('./formatters/terminal');
+const { formatTerminal, formatScoreOnly, formatRulesList } = require('./formatters/terminal');
 const { formatJson } = require('./formatters/json');
 
 /**
@@ -17,6 +18,12 @@ const { formatJson } = require('./formatters/json');
  */
 async function main(argv = process.argv.slice(2)) {
   const options = parseArgs(argv);
+
+  const enableColor = shouldEnableColor({
+    noColorFlag: options.noColor,
+    env: process.env,
+    isTTY: process.stdout.isTTY
+  });
 
   // Handle --help
   if (options.help) {
@@ -32,6 +39,17 @@ async function main(argv = process.argv.slice(2)) {
     return;
   }
 
+  // Handle --list-rules
+  if (options.listRules) {
+    if (options.json) {
+      process.stdout.write(JSON.stringify({ rules: listRules() }, null, 2) + '\n');
+    } else {
+      process.stdout.write(formatRulesList(listRules(), enableColor));
+    }
+    process.exitCode = 0;
+    return;
+  }
+
   // Handle unknown options gracefully
   if (options.unknown.length > 0) {
     process.stderr.write(`Ranger Error: Unknown option "${options.unknown[0]}"\nRun "ranger --help" for available options.\n`);
@@ -40,16 +58,15 @@ async function main(argv = process.argv.slice(2)) {
   }
 
   try {
-    const result = await inspectProject(options.projectPath);
+    const result = await inspectProject(options.projectPath, {
+      configPath: options.configPath
+    });
 
     if (options.json) {
       process.stdout.write(formatJson(result));
+    } else if (options.scoreOnly) {
+      process.stdout.write(formatScoreOnly(result, pkg.version, enableColor));
     } else {
-      const enableColor = shouldEnableColor({
-        noColorFlag: options.noColor,
-        env: process.env,
-        isTTY: process.stdout.isTTY
-      });
       process.stdout.write(formatTerminal(result, pkg.version, enableColor));
     }
 
