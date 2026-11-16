@@ -1,5 +1,5 @@
 {
-  "name": "ranger",
+  "name": "devora",
   "version": "0.3.0",
   "description": "A lightweight health inspector for JavaScript projects",
   "main": "src/index.js",
@@ -18,14 +18,28 @@
     "README.md"
   ],
   "keywords": [
+    "devora",
     "ranger",
     "health-check",
     "inspector",
     "diagnostics",
     "linter",
+    "code-quality",
+    "dependencies",
+    "environment",
+    "security",
+    "configuration",
     "nodejs",
     "cli"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abhinavv-dev/ranger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/abhinavv-dev/ranger/issues"
+  },
+  "homepage": "https://github.com/abhinavv-dev/ranger#readme",
   "author": "",
   "license": "MIT"
 }

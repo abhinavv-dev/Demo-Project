@@ -38,7 +38,7 @@ async function cleanupTempProject(dir) {
 
 test('Package Configuration', async (t) => {
   await t.test('has correct package metadata', () => {
-    assert.equal(pkg.name, 'ranger');
+    assert.equal(pkg.name, 'devora');
     assert.equal(pkg.version, '0.3.0');
     assert.equal(pkg.description, 'A lightweight health inspector for JavaScript projects');
     assert.equal(pkg.license, 'MIT');
@@ -645,17 +645,17 @@ test('Step 3 CLI & JSON Presentation Features', async (t) => {
   });
 
   // 9. Invalid project path
-  await t.test('9. Invalid project path exits with 1 and prints clean error', () => {
+  await t.test('9. Invalid project path exits with non-zero and prints clean error', () => {
     const nonExistent = path.join(os.tmpdir(), `non-existent-ranger-${Date.now()}`);
     const res = spawnSync(process.execPath, [cliPath, nonExistent], { encoding: 'utf8' });
-    assert.equal(res.status, 1);
+    assert.ok(res.status === 1 || res.status === 2, 'Execution failure should exit with non-zero code');
     assert.ok(res.stderr.includes('Ranger Error:'));
   });
 
   // 10. Unknown CLI arguments
-  await t.test('10. Unknown CLI arguments exit with 1 and inform user', () => {
+  await t.test('10. Unknown CLI arguments exit with non-zero and inform user', () => {
     const res = spawnSync(process.execPath, [cliPath, '--unknown-flag'], { encoding: 'utf8' });
-    assert.equal(res.status, 1);
+    assert.ok(res.status === 1 || res.status === 2, 'Invalid argument should exit with non-zero code');
     assert.ok(res.stderr.includes('Unknown option "--unknown-flag"'));
     assert.ok(res.stderr.includes('--help'));
   });
@@ -1464,6 +1464,188 @@ test('Step 5 Reliability & Diagnostic Intelligence', async (t) => {
       assert.ok(envFinding, 'Second run should detect the newly added environment variable');
     } finally {
       await cleanupTempProject(dir);
+    }
+  });
+});
+
+test('Step 6 Developer Experience & Release Preparation', async (t) => {
+  const cliPath = path.resolve(__dirname, '../src/cli.js');
+  const { parseArgs } = require('../src/formatters/args');
+  const { determineExitCode } = require('../src/cli');
+
+  await t.test('1. determineExitCode calculates exit code based on severity thresholds', () => {
+    // Default or 'error' threshold
+    assert.equal(determineExitCode({ errors: 0, warnings: 0, info: 0 }, null), 0);
+    assert.equal(determineExitCode({ errors: 0, warnings: 2, info: 1 }, null), 0);
+    assert.equal(determineExitCode({ errors: 1, warnings: 0, info: 0 }, null), 1);
+    assert.equal(determineExitCode({ errors: 0, warnings: 5, info: 0 }, 'error'), 0);
+    assert.equal(determineExitCode({ errors: 1, warnings: 0, info: 0 }, 'error'), 1);
+
+    // 'warning' threshold
+    assert.equal(determineExitCode({ errors: 0, warnings: 0, info: 2 }, 'warning'), 0);
+    assert.equal(determineExitCode({ errors: 0, warnings: 1, info: 0 }, 'warning'), 1);
+    assert.equal(determineExitCode({ errors: 1, warnings: 0, info: 0 }, 'warning'), 1);
+
+    // 'info' threshold
+    assert.equal(determineExitCode({ errors: 0, warnings: 0, info: 0 }, 'info'), 0);
+    assert.equal(determineExitCode({ errors: 0, warnings: 0, info: 1 }, 'info'), 1);
+    assert.equal(determineExitCode({ errors: 0, warnings: 1, info: 0 }, 'info'), 1);
+    assert.equal(determineExitCode({ errors: 1, warnings: 0, info: 0 }, 'info'), 1);
+  });
+
+  await t.test('2. CLI parseArgs handles --fail-on option correctly', () => {
+    const res1 = parseArgs(['--fail-on', 'warning']);
+    assert.equal(res1.failOn, 'warning');
+    assert.equal(res1.error, null);
+
+    const res2 = parseArgs(['--fail-on=error']);
+    assert.equal(res2.failOn, 'error');
+    assert.equal(res2.error, null);
+
+    const res3 = parseArgs(['--fail-on=info']);
+    assert.equal(res3.failOn, 'info');
+
+    const resInvalid = parseArgs(['--fail-on', 'critical']);
+    assert.ok(resInvalid.error);
+    assert.ok(resInvalid.error.includes('Invalid severity value'));
+
+    const resMissing = parseArgs(['--fail-on']);
+    assert.ok(resMissing.error);
+    assert.ok(resMissing.error.includes('Missing severity value'));
+  });
+
+  await t.test('3. CLI exits with code 0 when inspection has warnings but --fail-on is not set', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'warn-clean-exit', version: '1.0.0' }),
+      'index.js': 'process.env.FOO = 1;' // Triggers ENV001 warning
+    });
+
+    try {
+      const res = spawnSync(process.execPath, [cliPath, dir], { encoding: 'utf8' });
+      assert.equal(res.status, 0, 'Should exit with code 0 when only warnings exist and --fail-on is default');
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('4. CLI exits with code 1 when findings trigger --fail-on warning', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'fail-on-warning-test', version: '1.0.0' }),
+      'index.js': 'process.env.FOO = 1;'
+    });
+
+    try {
+      const res = spawnSync(process.execPath, [cliPath, dir, '--fail-on', 'warning'], { encoding: 'utf8' });
+      assert.equal(res.status, 1, 'Should exit with code 1 when warning exists and --fail-on warning is set');
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('5. CLI exits with code 1 when findings trigger --fail-on info', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'fail-on-info-test', version: '1.0.0' })
+      // Triggers CFG006 info finding (missing engines.node)
+    });
+
+    try {
+      const res = spawnSync(process.execPath, [cliPath, dir, '--fail-on', 'info'], { encoding: 'utf8' });
+      assert.equal(res.status, 1, 'Should exit with code 1 when info finding exists and --fail-on info is set');
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('6. CLI exits with code 2 on invalid arguments or execution errors', () => {
+    // Invalid argument value
+    const resArg = spawnSync(process.execPath, [cliPath, '--fail-on', 'invalid-sev'], { encoding: 'utf8' });
+    assert.equal(resArg.status, 2, 'Invalid --fail-on severity must exit with code 2');
+    assert.ok(resArg.stderr.includes('Invalid severity value'));
+
+    // Unknown argument
+    const resUnknown = spawnSync(process.execPath, [cliPath, '--some-unsupported-arg'], { encoding: 'utf8' });
+    assert.equal(resUnknown.status, 2, 'Unknown option must exit with code 2');
+
+    // Missing target directory
+    const missingDir = path.join(os.tmpdir(), `missing-dir-${Date.now()}`);
+    const resMissing = spawnSync(process.execPath, [cliPath, missingDir], { encoding: 'utf8' });
+    assert.equal(resMissing.status, 2, 'Execution failure on missing directory must exit with code 2');
+  });
+
+  await t.test('7. JSON mode preserves valid machine-readable output on non-zero exit codes', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({ name: 'json-fail-test', version: '1.0.0' }),
+      'index.js': 'process.env.PORT = 3000;'
+    });
+
+    try {
+      const res = spawnSync(process.execPath, [cliPath, dir, '--fail-on', 'warning', '--json'], { encoding: 'utf8' });
+      assert.equal(res.status, 1, 'Process should exit with code 1');
+      assert.doesNotThrow(() => {
+        const parsed = JSON.parse(res.stdout);
+        assert.ok(parsed.project);
+        assert.ok(parsed.score);
+        assert.ok(parsed.summary);
+        assert.ok(Array.isArray(parsed.findings));
+      }, 'stdout must remain strictly valid JSON without decorative banners');
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('8. CLI help output documents all supported options and exit codes', () => {
+    const res = spawnSync(process.execPath, [cliPath, '--help'], { encoding: 'utf8' });
+    assert.equal(res.status, 0);
+    assert.ok(res.stdout.includes('--fail-on <severity>'));
+    assert.ok(res.stdout.includes('--config <path>'));
+    assert.ok(res.stdout.includes('--json'));
+    assert.ok(res.stdout.includes('--score'));
+    assert.ok(res.stdout.includes('--list-rules'));
+    assert.ok(res.stdout.includes('--no-color'));
+    assert.ok(res.stdout.includes('EXIT CODES:'));
+  });
+
+  await t.test('9. Fresh project execution verification', async () => {
+    const dir = await createTempProject({
+      'package.json': JSON.stringify({
+        name: 'fresh-app',
+        version: '1.0.0',
+        engines: { node: '>=18' },
+        dependencies: { 'local-pkg': '^1.0.0' }
+      }),
+      'package-lock.json': JSON.stringify({ name: 'fresh-app', lockfileVersion: 3 }),
+      'node_modules/local-pkg/package.json': JSON.stringify({ name: 'local-pkg', version: '1.0.0' }),
+      '.env.example': 'PORT=3000\n',
+      'index.js': 'const p = require("local-pkg"); const port = process.env.PORT; console.log(p, port);'
+    });
+
+    try {
+      const result = await ranger.inspectProject(dir);
+      assert.equal(result.score.value, 100);
+      assert.equal(result.score.grade, 'A');
+      assert.equal(result.summary.errors, 0);
+      assert.equal(result.summary.warnings, 0);
+    } finally {
+      await cleanupTempProject(dir);
+    }
+  });
+
+  await t.test('10. Path with spaces works correctly in CLI and engine', async () => {
+    const tempParent = fs.mkdtempSync(path.join(os.tmpdir(), 'ranger space test-'));
+    const dir = path.join(tempParent, 'nested project path');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({
+      name: 'space-app',
+      version: '1.0.0'
+    }));
+
+    try {
+      const res = spawnSync(process.execPath, [cliPath, dir, '--json'], { encoding: 'utf8' });
+      assert.equal(res.status, 0);
+      const parsed = JSON.parse(res.stdout);
+      assert.equal(parsed.project.name, 'space-app');
+    } finally {
+      fs.rmSync(tempParent, { recursive: true, force: true });
     }
   });
 });

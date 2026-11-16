@@ -11,6 +11,24 @@ const { formatTerminal, formatScoreOnly, formatRulesList } = require('./formatte
 const { formatJson } = require('./formatters/json');
 
 /**
+ * Determine exit code based on findings summary and fail-on severity threshold.
+ *
+ * @param {{ errors: number, warnings: number, info: number }} summary
+ * @param {'error'|'warning'|'info'|null} failOn
+ * @returns {number}
+ */
+function determineExitCode(summary, failOn) {
+  if (failOn === 'info') {
+    return (summary.errors > 0 || summary.warnings > 0 || summary.info > 0) ? 1 : 0;
+  }
+  if (failOn === 'warning') {
+    return (summary.errors > 0 || summary.warnings > 0) ? 1 : 0;
+  }
+  // Default behavior or --fail-on error
+  return summary.errors > 0 ? 1 : 0;
+}
+
+/**
  * CLI execution entry point.
  *
  * @param {string[]} [argv=process.argv.slice(2)]
@@ -50,10 +68,26 @@ async function main(argv = process.argv.slice(2)) {
     return;
   }
 
+  // Handle argument parsing errors (e.g. invalid --fail-on value)
+  if (options.error) {
+    if (options.json) {
+      process.stderr.write(JSON.stringify({ error: options.error }, null, 2) + '\n');
+    } else {
+      process.stderr.write(`Ranger Error: ${options.error}\nRun "ranger --help" for available options.\n`);
+    }
+    process.exitCode = 2;
+    return;
+  }
+
   // Handle unknown options gracefully
   if (options.unknown.length > 0) {
-    process.stderr.write(`Ranger Error: Unknown option "${options.unknown[0]}"\nRun "ranger --help" for available options.\n`);
-    process.exitCode = 1;
+    const msg = `Unknown option "${options.unknown[0]}"`;
+    if (options.json) {
+      process.stderr.write(JSON.stringify({ error: msg }, null, 2) + '\n');
+    } else {
+      process.stderr.write(`Ranger Error: ${msg}\nRun "ranger --help" for available options.\n`);
+    }
+    process.exitCode = 2;
     return;
   }
 
@@ -70,11 +104,7 @@ async function main(argv = process.argv.slice(2)) {
       process.stdout.write(formatTerminal(result, pkg.version, enableColor));
     }
 
-    if (result.summary.errors > 0) {
-      process.exitCode = 1;
-    } else {
-      process.exitCode = 0;
-    }
+    process.exitCode = determineExitCode(result.summary, options.failOn);
   } catch (error) {
     if (options.json) {
       process.stderr.write(JSON.stringify({
@@ -83,7 +113,8 @@ async function main(argv = process.argv.slice(2)) {
     } else {
       process.stderr.write(`Ranger Error: ${error.message}\n`);
     }
-    process.exitCode = 1;
+    // Execution / configuration / directory failures exit with code 2
+    process.exitCode = 2;
   }
 }
 
@@ -91,4 +122,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { main };
+module.exports = { main, determineExitCode };

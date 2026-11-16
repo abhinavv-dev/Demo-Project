@@ -2,6 +2,8 @@
 
 const path = require('node:path');
 
+const VALID_FAIL_ON_SEVERITIES = new Set(['error', 'warning', 'info']);
+
 /**
  * Parse command-line arguments for the Ranger CLI.
  *
@@ -15,7 +17,9 @@ const path = require('node:path');
  *   listRules: boolean,
  *   scoreOnly: boolean,
  *   configPath: string|null,
- *   unknown: string[]
+ *   failOn: 'error'|'warning'|'info'|null,
+ *   unknown: string[],
+ *   error: string|null
  * }}
  */
 function parseArgs(argv = []) {
@@ -28,7 +32,9 @@ function parseArgs(argv = []) {
     listRules: false,
     scoreOnly: false,
     configPath: null,
-    unknown: []
+    failOn: null,
+    unknown: [],
+    error: null
   };
 
   let pathSet = false;
@@ -48,15 +54,43 @@ function parseArgs(argv = []) {
       result.listRules = true;
     } else if (arg === '--score') {
       result.scoreOnly = true;
+    } else if (arg === '--fail-on') {
+      if (i + 1 < argv.length && !argv[i + 1].startsWith('-')) {
+        const val = argv[i + 1].toLowerCase();
+        if (VALID_FAIL_ON_SEVERITIES.has(val)) {
+          result.failOn = val;
+          i++;
+        } else {
+          result.error = `Invalid severity value "${argv[i + 1]}" for --fail-on. Allowed values: error, warning, info.`;
+          return result;
+        }
+      } else {
+        result.error = 'Missing severity value for --fail-on. Allowed values: error, warning, info.';
+        return result;
+      }
+    } else if (arg.startsWith('--fail-on=')) {
+      const val = arg.slice('--fail-on='.length).toLowerCase();
+      if (VALID_FAIL_ON_SEVERITIES.has(val)) {
+        result.failOn = val;
+      } else {
+        result.error = `Invalid severity value "${val}" for --fail-on. Allowed values: error, warning, info.`;
+        return result;
+      }
     } else if (arg === '--config') {
       if (i + 1 < argv.length && !argv[i + 1].startsWith('-')) {
         result.configPath = argv[i + 1];
         i++;
       } else {
-        result.unknown.push(arg);
+        result.error = 'Missing file path for --config option.';
+        return result;
       }
     } else if (arg.startsWith('--config=')) {
-      result.configPath = arg.slice('--config='.length);
+      const val = arg.slice('--config='.length);
+      if (val.trim() === '') {
+        result.error = 'Missing file path for --config option.';
+        return result;
+      }
+      result.configPath = val;
     } else if (arg.startsWith('-')) {
       result.unknown.push(arg);
     } else {
@@ -87,21 +121,29 @@ USAGE:
   npx ranger [path] [options]
 
 ARGUMENTS:
-  [path]             Target project directory (defaults to current directory)
+  [path]                 Target project directory (defaults to current directory)
 
 OPTIONS:
-  --config <path>    Explicit path to ranger.config.json
-  --json             Output findings and score as machine-readable JSON
-  --score            Display health score and summary in a concise format
-  --list-rules       List all available diagnostic rules and default severities
-  --no-color         Disable terminal colors
-  -h, --help         Display this help message
-  -v, --version      Display the installed version
+  --config <path>        Explicit path to ranger.config.json
+  --fail-on <severity>   Set failure threshold for CI exit code: error, warning, info
+  --json                 Output findings and score as machine-readable JSON
+  --score                Display health score and summary in a concise format
+  --list-rules           List all available diagnostic rules and default severities
+  --no-color             Disable terminal colors (also respects NO_COLOR env)
+  -h, --help             Display this help message
+  -v, --version          Display the installed version
+
+EXIT CODES:
+  0   Inspection completed successfully; no configured failure threshold reached
+  1   Findings reached the configured failure threshold (default: errors > 0)
+  2   Invalid arguments, configuration errors, or execution failures
 
 EXAMPLES:
   ranger
   ranger .
   ranger /path/to/project
+  ranger --fail-on warning
+  ranger --fail-on error --json
   ranger --score
   ranger --list-rules
   ranger --config ranger.config.json
@@ -111,6 +153,7 @@ EXAMPLES:
 }
 
 module.exports = {
+  VALID_FAIL_ON_SEVERITIES,
   parseArgs,
   getHelpText
 };
