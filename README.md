@@ -176,14 +176,20 @@ Radar follows standard UNIX and CI/CD process exit codes:
 Provides a minimal one-line status summary:
 
 ```bash
+npx @abhinavvsharmaa/radar --score
+# or if installed locally / globally:
 radar --score
 ```
 
 ```text
-RADAR v0.3.0 — my-node-app
-Health Score: 93/100 (Grade A)
-Breakdown:    0 errors, 1 warning, 0 notices (45ms)
+RADAR v0.3.0 — @abhinavvsharmaa/radar
+Health Score: 86/100 (Grade B)
+Breakdown:    0 errors, 2 warnings, 0 notices (81ms)
 ```
+
+#### Terminal Execution Proof
+
+![RADAR Terminal Demo](assets/terminal-demo.png)
 
 ### JSON Output Mode (`--json`)
 
